@@ -5,12 +5,21 @@ let CATEGORY_COUNTER = 0;
 function isMoreThan4Words(text) {
   if (!text) return false;
   const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
-  return wordCount > 4;
+  return wordCount >= 4;
 }
 
 function normalizeCategoryText(text) {
   if (!text) return "";
   return text.replace(/^Category:\s*/i, "").replace(/["'`]/g, "").trim();
+}
+
+function normalizeForComparison(text) {
+  if (!text) return "";
+  return text
+    .toLowerCase()
+    .replace(/[`"'()]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
 async function AskOpenAi(userInput) {
@@ -40,8 +49,13 @@ async function AskOpenAi(userInput) {
       const category_response_data = await category_summary_response.json().catch(() => null);
       const raw = category_response_data?.choices?.[0]?.message?.content || "";
       const cleaned = normalizeCategoryText(raw);
+      const normalizedRaw = normalizeForComparison(raw);
+      const normalizedErrorCode = normalizeForComparison(CATEGORY_ERROR_CODE);
 
-      if (cleaned.includes(CATEGORY_ERROR_CODE) || raw.includes(CATEGORY_ERROR_CODE)) {
+      if (
+        normalizedRaw.includes(normalizedErrorCode) ||
+        normalizeForComparison(cleaned).includes(normalizedErrorCode)
+      ) {
         return "Request terminated: category error detected.";
       }
 
