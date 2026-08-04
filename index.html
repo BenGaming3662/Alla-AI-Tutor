@@ -177,13 +177,16 @@
 
         form.addEventListener("submit", async function (event) {
             event.preventDefault();
+
             var userInput = input.value.trim();
+
             if (!userInput) {
                 output.textContent = "Please enter a question or prompt first.";
                 return;
             }
 
             output.textContent = "Thinking...";
+
             try {
                 var result = await AskOpenAi(userInput);
                 output.textContent = result;
