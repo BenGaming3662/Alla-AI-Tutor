@@ -1,8 +1,9 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Alla AI: Math Tutoring</title>
     <style>
         :root {
@@ -74,25 +75,20 @@
           
         }
 
-        .nav-buttons button {
+        .nav-buttons .nav-link {
             padding: 10px 16px;
             border-radius: 999px;
             background: rgb(25,25,25);
             border: 1px solid rgb(25,25,25);
             color: var(--text);
             cursor: pointer;
-      
-        }
-
-        .nav-buttons button:hover {
-            background: rgba(0,155,13);
-            transform: translateY(-1px);
-        }
-
-        .nav-buttons a {
-            color: inherit;
             text-decoration: none;
             display: inline-block;
+        }
+
+        .nav-buttons .nav-link:hover {
+            background: rgba(0,155,13);
+            transform: translateY(-1px);
         }
 
         .page-body {
@@ -155,8 +151,8 @@
     <div class="topbar">
         <img src="https://i.imgur.com/HvQ6wZ6.png" alt="Logo">
         <div class="nav-buttons">
-            <button><a href="index.html">Home</a></button>
-            <button><a href="About.html">About</a></button>
+            <a class="nav-link" href="index.html">Home</a>
+            <a class="nav-link" href="About.html">About</a>
         </div>
     </div>
 

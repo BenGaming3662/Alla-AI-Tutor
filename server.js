@@ -1,5 +1,6 @@
 const http = require("http");
 const { AskOpenAi } = require("./OpenAi");
+const { validatePromptInput } = require("./TypeScript");
 
 const PORT = process.env.PORT || 3000;
 
@@ -29,12 +30,15 @@ const server = http.createServer(async (req, res) => {
         const prompt = payload.prompt || payload.message || "";
         const apiKey = payload.apiKey || undefined;
 
-        if (!prompt.trim()) {
-          sendJson(res, 400, { error: "Please provide a prompt." });
+        const validation = validatePromptInput({ prompt });
+
+        if (!validation.success) {
+          const message = validation.error.flatten().fieldErrors?.prompt?.[0] || "Please provide a valid prompt.";
+          sendJson(res, 400, { error: message });
           return;
         }
 
-        const text = await AskOpenAi(prompt, apiKey);
+        const text = await AskOpenAi(validation.data.prompt, apiKey);
         sendJson(res, 200, { text });
       } catch (error) {
         sendJson(res, 500, { error: error.message || "Server error" });

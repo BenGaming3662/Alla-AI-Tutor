@@ -1,0 +1,29 @@
+{
+  "name": "veritas-ai",
+  "version": "1.0.0",
+  "description": "",
+  "main": "OpenAi.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BenGaming3662/Alla-AI-Tutor.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/BenGaming3662/Alla-AI-Tutor/issues"
+  },
+  "homepage": "https://github.com/BenGaming3662/Alla-AI-Tutor#readme",
+  "dependencies": {
+    "leo-profanity": "^1.9.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2"
+  }
+}
