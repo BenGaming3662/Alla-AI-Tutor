@@ -1,6 +1,6 @@
 const http = require("http");
 const { AskOpenAi } = require("./OpenAi");
-const { validatePromptInput } = require("./TypeScript");
+const { validatePromptInput } = require("./Zod");
 
 const PORT = process.env.PORT || 3000;
 

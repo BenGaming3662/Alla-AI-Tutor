@@ -14,6 +14,8 @@
             --panel-border: rgb(0,155,13);
             --text: #f7f8f5;
             --muted: #99a18a;
+            --danger: #ff4d4d;
+            --success: #3ae27a;
         }
 
         * {
@@ -35,17 +37,14 @@
             justify-content: center;
         }
 
-        
-
         .topbar img {
             width: 140px;
             max-width: 160px;
             object-fit: contain;
             display: block;
-           left: 20px;
+            left: 20px;
             position: fixed;
             top: 20px;
-            
         }
 
         .header-text {
@@ -67,12 +66,9 @@
             gap: 10px;
             flex-wrap: wrap;
             position: fixed;
-
             top: 10px;
-           left: 88%;
-            display: flex;
+            left: 88%;
             align-items: center;
-          
         }
 
         .nav-buttons .nav-link {
@@ -123,7 +119,6 @@
 
         #submitButton {
             width: 20%;
-           
             padding: 2%;
             border-radius: 12px;
             background: var(--brand-green);
@@ -131,8 +126,6 @@
             font-weight: 700;
             cursor: pointer;
         }
-
-     
 
         output {
             width: 100%;
@@ -143,6 +136,66 @@
             color: #e6ffe6;
             min-height: 130px;
             display: block;
+        }
+
+        .quiz-wrap {
+            display: grid;
+            gap: 18px;
+        }
+
+        .quiz-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .quiz-header h3 {
+            margin: 0;
+            font-size: 1.3rem;
+        }
+
+        .quiz-header button {
+            border: none;
+            border-radius: 12px;
+            padding: 10px 14px;
+            background: var(--brand-green);
+            color: #050607;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .quiz-question {
+            display: grid;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .quiz-question label {
+            color: #e6ffe6;
+            line-height: 1.5;
+        }
+
+        .answer-input {
+            width: 100%;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.25);
+            background: rgba(12,16,21,0.9);
+            color: var(--text);
+            padding: 12px 14px;
+            font-size: 1rem;
+            transition: border-color 0.2s ease, background 0.2s ease;
+        }
+
+        .answer-input.correct {
+            border-color: var(--success);
+            background: rgba(58, 226, 122, 0.14);
+        }
+
+        .answer-input.incorrect {
+            border-color: var(--danger);
+            background: rgba(255, 77, 77, 0.14);
         }
     </style>
 </head>
@@ -175,6 +228,55 @@
         var input = document.getElementById("userInput");
         var output = document.getElementById("output");
 
+        function normalizeAnswer(value) {
+            return String(value || "")
+                .toLowerCase()
+                .replace(/[^a-z0-9\s]/g, "")
+                .replace(/\s+/g, " ")
+                .trim();
+        }
+
+        function renderQuiz(quizData) {
+            if (!quizData || !Array.isArray(quizData.questions) || quizData.questions.length === 0) {
+                output.innerHTML = "<p>No quiz data available.</p>";
+                return;
+            }
+
+            var subjectTitle = quizData.subject || "Study Topic";
+            var items = quizData.questions.map(function (item, index) {
+                return "<div class=\"quiz-question\">" +
+                    "<label for=\"answer-" + index + "\">" + (index + 1) + ". " + (item.question || "Question") + "</label>" +
+                    "<input id=\"answer-" + index + "\" class=\"answer-input\" type=\"text\" data-index=\"" + index + "\" placeholder=\"Type your answer\">" +
+                    "</div>";
+            }).join("");
+
+            output.innerHTML = "<div class=\"quiz-wrap\"><div class=\"quiz-header\"><h3>" + subjectTitle + "</h3><button type=\"button\" id=\"gradeQuizButton\">Check Answers</button></div>" + items + "</div>";
+
+            var gradeButton = document.getElementById("gradeQuizButton");
+            if (gradeButton) {
+                gradeButton.addEventListener("click", function () {
+                    var answerInputs = output.querySelectorAll(".answer-input");
+                    answerInputs.forEach(function (field) {
+                        var questionIndex = Number(field.dataset.index);
+                        var expectedAnswer = normalizeAnswer(quizData.questions[questionIndex]?.answer || "");
+                        var userAnswer = normalizeAnswer(field.value);
+
+                        field.classList.remove("correct", "incorrect");
+
+                        if (!userAnswer) {
+                            return;
+                        }
+
+                        if (userAnswer === expectedAnswer) {
+                            field.classList.add("correct");
+                        } else {
+                            field.classList.add("incorrect");
+                        }
+                    });
+                });
+            }
+        }
+
         form.addEventListener("submit", async function (event) {
             event.preventDefault();
             var userInput = input.value.trim();
@@ -186,7 +288,13 @@
             output.textContent = "Thinking...";
             try {
                 var result = await AskOpenAi(userInput);
-                output.textContent = result;
+
+                if (result && Array.isArray(result.questions) && result.questions.length > 0) {
+                    renderQuiz(result);
+                    return;
+                }
+
+                output.textContent = result && result.error ? "OpenAI error: " + result.error : "No quiz data was returned.";
             } catch (error) {
                 output.textContent = "Error: " + (error.message || "Request failed");
             }

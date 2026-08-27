@@ -1,6 +1,30 @@
-const OPENAI_API_KEY = window.APP_CONFIG.OPENAI_API_KEY;
 const CATEGORY_ERROR_CODE = "Id10T error";
 let CATEGORY_COUNTER = 0;
+
+const globalScope = typeof window !== "undefined" ? window : globalThis;
+
+const QUIZ_OUTPUT_SCHEMA = {
+  type: "object",
+  properties: {
+    subject: { type: "string" },
+    questions: {
+      type: "array",
+      minItems: 5,
+      maxItems: 5,
+      items: {
+        type: "object",
+        properties: {
+          question: { type: "string" },
+          answer: { type: "string" }
+        },
+        required: ["question", "answer"],
+        additionalProperties: false
+      }
+    }
+  },
+  required: ["subject", "questions"],
+  additionalProperties: false
+};
 
 let leoProfanity = null;
 let leoProfanityLoaded = false;
@@ -14,7 +38,6 @@ try {
 } catch (err) {
   console.warn("Profanity filter unavailable:", err);
 }
-
 
 function isMoreThan4Words(text) {
   if (!text) return false;
@@ -47,11 +70,76 @@ function inferCategoryFromPrompt(text) {
     .trim();
 }
 
-async function AskOpenAi(userInput) {
-  if (!userInput || !userInput.trim()) {
-    return "Please enter a question or prompt first.";
+function extractJsonObject(rawText) {
+  if (!rawText) return null;
+
+  let text = String(rawText).trim();
+  if (text.startsWith("```")) {
+    text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
   }
 
+  const firstBrace = text.indexOf("{");
+  const lastBrace = text.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    text = text.slice(firstBrace, lastBrace + 1);
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch (err) {
+    return null;
+  }
+}
+
+function buildQuizPrompt(subject) {
+  return `You are creating a quiz. The subject is: ${subject}.\n\nRules:\n1. Every question must be directly about ${subject}.\n2. Do not use unrelated topics, general trivia, or off-topic questions.\n3. Create exactly 5 questions.\n4. Each question must have a "question" and a "answer" field.\n5. The "answer" must be the correct final answer only, with no extra explanation.\n6. The answer must be correct and match the question exactly.\n7. Return ONLY valid JSON with this exact schema: ${JSON.stringify(QUIZ_OUTPUT_SCHEMA)}.`;
+}
+
+async function verifyQuizAnswerSet(subject, quizData, apiKey) {
+  if (!quizData || !Array.isArray(quizData.questions) || quizData.questions.length !== 5) {
+    return quizData || { subject, questions: [] };
+  }
+
+  const verifyPrompt = `Validate this quiz for subject accuracy and correctness.\nSubject: ${subject}\nQuiz: ${JSON.stringify(quizData)}\n\nRequirements:\n- Every question must stay strictly on ${subject}.\n- Every answer must be correct.\n- Fix any off-topic or incorrect answer.\n- Return ONLY valid JSON matching this schema: ${JSON.stringify(QUIZ_OUTPUT_SCHEMA)}.`;
+
+  try {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: verifyPrompt }],
+        temperature: 0.2,
+        max_tokens: 500
+      })
+    });
+
+    const data = await response.json().catch(() => null);
+    if (!response.ok) {
+      return quizData;
+    }
+
+    const parsed = extractJsonObject(data?.choices?.[0]?.message?.content || "");
+    if (parsed && Array.isArray(parsed.questions) && parsed.questions.length === 5 && parsed.subject) {
+      return parsed;
+    }
+
+    return quizData;
+  } catch (err) {
+    console.warn("Quiz verification failed:", err);
+    return quizData;
+  }
+}
+
+async function AskOpenAi(userInput, apiKeyOverride) {
+  if (!userInput || !userInput.trim()) {
+    return { subject: "", questions: [] };
+  }
+
+  const requestApiKey = apiKeyOverride || globalScope?.APP_CONFIG?.OPENAI_API_KEY || process?.env?.OPENAI_API_KEY;
   let category_data = userInput.trim();
 
   function AllaAntiSwear(text) {
@@ -70,7 +158,7 @@ async function AskOpenAi(userInput) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${OPENAI_API_KEY}`
+          Authorization: `Bearer ${requestApiKey}`
         },
         body: JSON.stringify({
           model: "gpt-4o-mini",
@@ -90,7 +178,7 @@ async function AskOpenAi(userInput) {
         normalizeForComparison(cleaned).includes(normalizedErrorCode) ||
         AllaAntiSwear(category_data)
       ) {
-        return "Request terminated:  error detected.";
+        return { subject: "Error", questions: [] };
       }
 
       const inferredCategory = inferCategoryFromPrompt(cleaned || userInput);
@@ -107,33 +195,65 @@ async function AskOpenAi(userInput) {
     }
   }
 
-  const finalPrompt = `${category_data}\n\n### Create a 1-paragraph summary of the subject. After the summary, provide exactly 3 practice problems. Keep the answer in plain text with no markdown formatting.`;
+  const finalPrompt = buildQuizPrompt(category_data);
 
   try {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${OPENAI_API_KEY}`
+        Authorization: `Bearer ${requestApiKey}`
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
         messages: [{ role: "user", content: finalPrompt }],
-        temperature: 0.7,
-        max_tokens: 180
+        temperature: 0.2,
+        max_tokens: 500,
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "quiz_schema",
+            schema: QUIZ_OUTPUT_SCHEMA
+          }
+        }
       })
     });
 
     const data = await response.json().catch(() => null);
     if (!response.ok) {
-      return "OpenAI error: " + (data?.error?.message || `status ${response?.status}`);
+      return {
+        subject: category_data,
+        questions: [],
+        error: data?.error?.message || `status ${response?.status}`
+      };
     }
 
-    const out = data?.choices?.[0]?.message?.content || "No response from OpenAI.";
-    return out;
+    const out = data?.choices?.[0]?.message?.content || "";
+    const parsed = extractJsonObject(out);
+
+    if (parsed && Array.isArray(parsed.questions) && parsed.questions.length === 5 && parsed.subject) {
+      const verifiedQuiz = await verifyQuizAnswerSet(category_data, parsed, requestApiKey);
+      if (verifiedQuiz && Array.isArray(verifiedQuiz.questions) && verifiedQuiz.questions.length === 5 && verifiedQuiz.subject) {
+        return verifiedQuiz;
+      }
+      return parsed;
+    }
+
+    return {
+      subject: category_data,
+      questions: []
+    };
   } catch (err) {
-    return "OpenAI request failed: " + (err.message || String(err));
+    return {
+      subject: category_data,
+      questions: [],
+      error: err.message || String(err)
+    };
   }
 }
 
-window.AskOpenAi = AskOpenAi;
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = { AskOpenAi, QUIZ_OUTPUT_SCHEMA };
+}
+
+globalScope.AskOpenAi = AskOpenAi;
