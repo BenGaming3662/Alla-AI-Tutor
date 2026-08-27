@@ -1,18 +1,33 @@
-import { z } from "https://cdn.jsdelivr.net/npm/zod@3.23.8/+esm";
+const { z } = require("zod");
 
 const PromptSchema = z.object({
   prompt: z.string().trim().min(4, "Make a 1 paragraph summary of the topic, and 3 questions on it. NO FORMATTING!")
+});
+
+const QuizQuestionSchema = z.object({
+  question: z.string().min(1),
+  answer: z.string().min(1)
+});
+
+const OutputSchema = z.object({
+  subject: z.string().min(1),
+  questions: z.array(QuizQuestionSchema).length(5)
 });
 
 function validatePromptInput(input) {
   return PromptSchema.safeParse(input);
 }
 
-const OutputSchema = z.object({
-  question: z.string().startsWith("Q:"),
-  answer: z.string().startsWith("A:")
-});
+module.exports = {
+  PromptSchema,
+  validatePromptInput,
+  OutputSchema,
+  QuizQuestionSchema
+};
 
-window.PromptSchema = PromptSchema;
-window.validatePromptInput = validatePromptInput;
-window.OutputSchema = OutputSchema;
+
+/*
+As they say in python:
+print("Save my soul")
+
+*/
