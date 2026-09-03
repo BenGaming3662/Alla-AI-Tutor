@@ -235,6 +235,48 @@
                 .replace(/\s+/g, " ")
                 .trim();
         }
+        function isAnswerCorrect(userAnswer, expectedAnswer) {
+            const user = normalizeAnswer(userAnswer);
+            const expected = normalizeAnswer(expectedAnswer);
+            
+            if (user === expected) {
+                return true;
+            }
+
+            if (user.length >= 3 && expected.includes(user)) {
+                return true;
+            }
+            if (expected.length >= 3 && user.includes(expected)) {
+                return true;
+            }
+            
+            const userWords = user.split(/\s+/);
+            const expectedWords = expected.split(/\s+/);
+
+            if (userWords.length === 1 && expectedWords.length > 1) {
+                const acronym = expectedWords.map(w => w[0]).join("");
+                if (user === acronym) {
+                    return true;
+                }
+            }
+            
+            if (expectedWords.length === 1 && userWords.length > 1) {
+                const userAcronym = userWords.map(w => w[0]).join("");
+                if (userAcronym === expected) {
+                    return true;
+                }
+            }
+            
+            if (userWords.length > 2 && expectedWords.length > 2) {
+                const commonWords = userWords.filter(w => expectedWords.includes(w));
+                const minLength = Math.min(userWords.length, expectedWords.length);
+                if (commonWords.length / minLength >= 0.8) {
+                    return true;
+                }
+            }
+            
+            return false;
+        }
 
         function renderQuiz(quizData) {
             if (!quizData || !Array.isArray(quizData.questions) || quizData.questions.length === 0) {
@@ -258,16 +300,17 @@
                     var answerInputs = output.querySelectorAll(".answer-input");
                     answerInputs.forEach(function (field) {
                         var questionIndex = Number(field.dataset.index);
-                        var expectedAnswer = normalizeAnswer(quizData.questions[questionIndex]?.answer || "");
-                        var userAnswer = normalizeAnswer(field.value);
+                        var expectedAnswer = quizData.questions[questionIndex]?.answer || "";
+                        var userAnswer = field.value;
 
                         field.classList.remove("correct", "incorrect");
 
-                        if (!userAnswer) {
+                        if (!userAnswer.trim()) {
                             return;
                         }
 
-                        if (userAnswer === expectedAnswer) {
+                        // Use advanced comparison logic
+                        if (isAnswerCorrect(userAnswer, expectedAnswer)) {
                             field.classList.add("correct");
                         } else {
                             field.classList.add("incorrect");
