@@ -138,6 +138,59 @@
             display: block;
         }
 
+        .lesson-shell { display: grid; gap: 22px; }
+        .lesson-nav { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+        .lesson-nav button { padding: 10px 8px; border: 1px solid rgba(255,255,255,0.18); border-radius: 10px; background: #151b20; color: var(--text); cursor: pointer; }
+        .lesson-nav button.active { border-color: var(--brand-green); color: var(--brand-green); }
+        .lesson-page { display: none; gap: 16px; }
+        .lesson-page.active { display: grid; }
+        .lesson-page h3 { margin: 0; color: var(--brand-green); }
+        .lesson-page p { margin: 0; line-height: 1.6; }
+        .formula-list, .step-list { margin: 0; padding-left: 22px; line-height: 1.7; }
+        .guided-card, .practice-card { padding: 16px; border: 1px solid rgba(255,255,255,0.14); border-radius: 14px; background: rgba(12,16,21,0.8); }
+        .practice-card { display: grid; gap: 7px; }
+        .practice-answer { color: var(--muted); font-size: 0.82rem; }
+        .final-feedback { min-height: 1.4em; color: var(--muted); }
+        .check-answers-button {
+            justify-self: start;
+            display: inline-flex;
+            align-items: center;
+            gap: 9px;
+            padding: 12px 18px;
+            border: 1px solid #8aff91;
+            border-radius: 12px;
+            background: var(--brand-green);
+            color: #050607;
+            box-shadow: 0 5px 0 #008c0b, 0 10px 24px rgba(0, 255, 13, 0.16);
+            font-weight: 800;
+            letter-spacing: 0.02em;
+            cursor: pointer;
+            transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+        }
+        .check-answers-button::before {
+            content: "[ ]";
+            font-size: 0.8rem;
+            font-weight: 900;
+        }
+        .check-answers-button:hover {
+            background: #7dff85;
+            transform: translateY(-2px);
+            box-shadow: 0 7px 0 #008c0b, 0 14px 28px rgba(0, 255, 13, 0.2);
+        }
+        .check-answers-button:active {
+            transform: translateY(3px);
+            box-shadow: 0 2px 0 #008c0b, 0 5px 14px rgba(0, 255, 13, 0.14);
+        }
+        .check-answers-button:focus-visible {
+            outline: 3px solid #ffffff;
+            outline-offset: 3px;
+        }
+        @media (max-width: 560px) {
+            .lesson-nav { grid-template-columns: repeat(2, 1fr); }
+            .title { font-size: 2.1rem; }
+            .nav-buttons { left: auto; right: 12px; }
+        }
+
         .quiz-wrap {
             display: grid;
             gap: 18px;
@@ -279,45 +332,45 @@
         }
 
         function renderQuiz(quizData) {
-            if (!quizData || !Array.isArray(quizData.questions) || quizData.questions.length === 0) {
+            if (!quizData || !quizData.review || !Array.isArray(quizData.questions) || !Array.isArray(quizData.finalQuestions)) {
                 output.innerHTML = "<p>No quiz data available.</p>";
                 return;
             }
 
             var subjectTitle = quizData.subject || "Study Topic";
-            var items = quizData.questions.map(function (item, index) {
-                return "<div class=\"quiz-question\">" +
-                    "<label for=\"answer-" + index + "\">" + (index + 1) + ". " + (item.question || "Question") + "</label>" +
-                    "<input id=\"answer-" + index + "\" class=\"answer-input\" type=\"text\" data-index=\"" + index + "\" placeholder=\"Type your answer\">" +
-                    "</div>";
+            var review = quizData.review;
+            var formulas = (review.formulas || []).map(function (formula) { return "<li>" + formula + "</li>"; }).join("");
+            var guidedSteps = (review.guidedProblem.steps || []).map(function (step) { return "<li>" + step + "</li>"; }).join("");
+            var guidedItems = quizData.questions.map(function (item) {
+                return "<div class=\"practice-card\"><strong>" + item.question + "</strong><small class=\"practice-answer\">Answer: " + item.answer + "</small></div>";
+            });
+            var guidedSplit = Math.ceil(guidedItems.length / 2);
+            var finalItems = quizData.finalQuestions.map(function (item, index) {
+                 return "<div class=\"quiz-question\"><label for=\"final-answer-" + index + "\">" + (index + 1) + ". " + item.question + "</label><input id=\"final-answer-" + index + "\" class=\"answer-input\" type=\"text\" data-index=\"" + index + "\" placeholder=\"Type your answer\"><small class=\"final-feedback\" id=\"final-feedback-" + index + "\"></small></div>";
             }).join("");
 
-            output.innerHTML = "<div class=\"quiz-wrap\"><div class=\"quiz-header\"><h3>" + subjectTitle + "</h3><button type=\"button\" id=\"gradeQuizButton\">Check Answers</button></div>" + items + "</div>";
+            output.innerHTML = "<div class=\"lesson-shell\"><div class=\"quiz-header\"><h3>" + subjectTitle + "</h3></div><div class=\"lesson-nav\"><button class=\"active\" data-page=\"review-page\">1. Review</button><button data-page=\"guided-page\">2. Guided Practice</button><button data-page=\"guided-page-2\">3. More Practice</button><button data-page=\"final-page\">4. Check Answers</button></div><section id=\"review-page\" class=\"lesson-page active\"><h3>Review</h3><p>" + review.summary + "</p><ul class=\"formula-list\">" + formulas + "</ul><div class=\"guided-card\"><strong>Guided problem: " + review.guidedProblem.prompt + "</strong><ol class=\"step-list\">" + guidedSteps + "</ol><small class=\"practice-answer\">Answer: " + review.guidedProblem.answer + "</small></div></section><section id=\"guided-page\" class=\"lesson-page\"><h3>Guided practice</h3>" + guidedItems.slice(0, guidedSplit).join("") + "</section><section id=\"guided-page-2\" class=\"lesson-page\"><h3>More practice</h3>" + guidedItems.slice(guidedSplit).join("") + "</section><section id=\"final-page\" class=\"lesson-page\"><h3>Final practice</h3><button type=\"button\" class=\"check-answers-button\" id=\"gradeQuizButton\">Check Answers</button>" + finalItems + "</section></div>";
 
-            var gradeButton = document.getElementById("gradeQuizButton");
-            if (gradeButton) {
-                gradeButton.addEventListener("click", function () {
-                    var answerInputs = output.querySelectorAll(".answer-input");
-                    answerInputs.forEach(function (field) {
-                        var questionIndex = Number(field.dataset.index);
-                        var expectedAnswer = quizData.questions[questionIndex]?.answer || "";
-                        var userAnswer = field.value;
-
-                        field.classList.remove("correct", "incorrect");
-
-                        if (!userAnswer.trim()) {
-                            return;
-                        }
-
-                        // Use advanced comparison logic
-                        if (isAnswerCorrect(userAnswer, expectedAnswer)) {
-                            field.classList.add("correct");
-                        } else {
-                            field.classList.add("incorrect");
-                        }
-                    });
+            output.querySelectorAll(".lesson-nav button").forEach(function (button) {
+                button.addEventListener("click", function () {
+                    output.querySelectorAll(".lesson-nav button, .lesson-page").forEach(function (element) { element.classList.remove("active"); });
+                    button.classList.add("active");
+                    document.getElementById(button.dataset.page).classList.add("active");
                 });
-            }
+            });
+
+            document.getElementById("gradeQuizButton").addEventListener("click", function () {
+                output.querySelectorAll(".answer-input").forEach(function (field) {
+                    var questionIndex = Number(field.dataset.index);
+                    var expectedAnswer = quizData.finalQuestions[questionIndex]?.answer || "";
+                    var feedback = document.getElementById("final-feedback-" + questionIndex);
+                    field.classList.remove("correct", "incorrect");
+                    if (!field.value.trim()) { feedback.textContent = "Enter an answer to check it."; return; }
+                    var correct = isAnswerCorrect(field.value, expectedAnswer);
+                    field.classList.add(correct ? "correct" : "incorrect");
+                    feedback.textContent = correct ? "Correct" : "Answer: " + expectedAnswer;
+                });
+            });
         }
 
         form.addEventListener("submit", async function (event) {

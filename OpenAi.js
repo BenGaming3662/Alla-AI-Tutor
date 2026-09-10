@@ -6,7 +6,40 @@ const QUIZ_OUTPUT_SCHEMA = {
   type: "object",
   properties: {
     subject: { type: "string" },
+    review: {
+      type: "object",
+      properties: {
+        summary: { type: "string" },
+        formulas: { type: "array", items: { type: "string" } },
+        guidedProblem: {
+          type: "object",
+          properties: {
+            prompt: { type: "string" },
+            steps: { type: "array", items: { type: "string" } },
+            answer: { type: "string" }
+          },
+          required: ["prompt", "steps", "answer"],
+          additionalProperties: false
+        }
+      },
+      required: ["summary", "formulas", "guidedProblem"],
+      additionalProperties: false
+    },
     questions: {
+      type: "array",
+      minItems: 6,
+      maxItems: 6,
+      items: {
+        type: "object",
+        properties: {
+          question: { type: "string" },
+          answer: { type: "string" }
+        },
+        required: ["question", "answer"],
+        additionalProperties: false
+      }
+    },
+    finalQuestions: {
       type: "array",
       minItems: 5,
       maxItems: 5,
@@ -21,16 +54,34 @@ const QUIZ_OUTPUT_SCHEMA = {
       }
     }
   },
-  required: ["subject", "questions"],
+  required: ["subject", "review", "questions", "finalQuestions"],
   additionalProperties: false
 };
 
-// Verification schema for quality assurance checks
+// The model fact-checks educational content; deterministic checks independently
+// reject malformed data and simple arithmetic errors.
 const VERIFICATION_SCHEMA = {
   type: "object",
   properties: {
     subject: { type: "string" },
     questions: {
+      type: "array",
+      minItems: 6,
+      maxItems: 6,
+      items: {
+        type: "object",
+        properties: {
+          question: { type: "string" },
+          answer: { type: "string" },
+          isAccurate: { type: "boolean" },
+          isOnTopic: { type: "boolean" },
+          reasonIfInaccurate: { type: "string" }
+        },
+        required: ["question", "answer", "isAccurate", "isOnTopic", "reasonIfInaccurate"],
+        additionalProperties: false
+      }
+    },
+    finalQuestions: {
       type: "array",
       minItems: 5,
       maxItems: 5,
@@ -50,6 +101,20 @@ const VERIFICATION_SCHEMA = {
     allQuestionsValid: { type: "boolean" },
     correctedQuestions: {
       type: "array",
+      minItems: 6,
+      maxItems: 6,
+      items: {
+        type: "object",
+        properties: {
+          question: { type: "string" },
+          answer: { type: "string" }
+        },
+        required: ["question", "answer"],
+        additionalProperties: false
+      }
+    },
+    correctedFinalQuestions: {
+      type: "array",
       minItems: 5,
       maxItems: 5,
       items: {
@@ -63,7 +128,7 @@ const VERIFICATION_SCHEMA = {
       }
     }
   },
-  required: ["subject", "questions", "allQuestionsValid", "correctedQuestions"],
+  required: ["subject", "questions", "finalQuestions", "allQuestionsValid", "correctedQuestions", "correctedFinalQuestions"],
   additionalProperties: false
 };
 
@@ -72,7 +137,7 @@ function isValidVerificationResult(result) {
     result &&
     typeof result.subject === "string" &&
     Array.isArray(result.questions) &&
-    result.questions.length === 5 &&
+     result.questions.length === 6 &&
     result.questions.every((question) =>
       question &&
       typeof question.question === "string" &&
@@ -80,10 +145,26 @@ function isValidVerificationResult(result) {
       question.isAccurate === true &&
       question.isOnTopic === true
     ) &&
+     Array.isArray(result.finalQuestions) &&
+     result.finalQuestions.length === 5 &&
+     result.finalQuestions.every((question) =>
+       question &&
+       typeof question.question === "string" &&
+       typeof question.answer === "string" &&
+       question.isAccurate === true &&
+       question.isOnTopic === true
+     ) &&
     result.allQuestionsValid === true &&
     Array.isArray(result.correctedQuestions) &&
-    result.correctedQuestions.length === 5 &&
+     result.correctedQuestions.length === 6 &&
     result.correctedQuestions.every((question) =>
+      question &&
+      typeof question.question === "string" &&
+      typeof question.answer === "string"
+    ) &&
+    Array.isArray(result.correctedFinalQuestions) &&
+    result.correctedFinalQuestions.length === 5 &&
+    result.correctedFinalQuestions.every((question) =>
       question &&
       typeof question.question === "string" &&
       typeof question.answer === "string"
@@ -156,6 +237,42 @@ function extractJsonObject(rawText) {
   }
 }
 
+function deterministicQuestionCheck(questionSet) {
+  if (!Array.isArray(questionSet) || questionSet.length === 0) {
+    return { valid: false, reason: "The question set is empty or malformed." };
+  }
+
+  const normalizedQuestions = questionSet.map((item) => normalizeForComparison(item?.question));
+  if (normalizedQuestions.some((question) => !question)) {
+    return { valid: false, reason: "Every question must contain text." };
+  }
+  if (new Set(normalizedQuestions).size !== normalizedQuestions.length) {
+    return { valid: false, reason: "Questions must not be duplicates." };
+  }
+  if (questionSet.some((item) => !item || !String(item.answer || "").trim())) {
+    return { valid: false, reason: "Every question must contain an answer." };
+  }
+
+  for (const item of questionSet) {
+    const expression = String(item.question).match(/\b(\d+(?:\s*[+\-*\/]\s*\d+){1,})\b/);
+    if (!expression) continue;
+
+    const expected = Function(`"use strict"; return (${expression[1]})`)();
+    const answerNumber = Number(String(item.answer).replace(/,/g, "").match(/-?\d+(?:\.\d+)?/)?.[0]);
+    if (!Number.isFinite(expected) || !Number.isFinite(answerNumber) || Math.abs(expected - answerNumber) > 1e-9) {
+      return { valid: false, reason: `The arithmetic answer for "${item.question}" is incorrect.` };
+    }
+  }
+
+  return { valid: true, reason: "Structure and checkable arithmetic passed without AI." };
+}
+
+function deterministicLessonCheck(quizData) {
+  const practiceCheck = deterministicQuestionCheck(quizData?.questions);
+  if (!practiceCheck.valid) return practiceCheck;
+  return deterministicQuestionCheck(quizData?.finalQuestions);
+}
+
 function buildQuizPrompt(subject) {
   return `# Quiz Generation Task
 
@@ -163,7 +280,9 @@ You are creating an educational quiz on the subject: **${subject}**
 
 ## Core Requirements
 
-- Generate exactly **5 questions** directly about ${subject}
+  - Generate exactly **6 guided-practice questions** and exactly **5 final-practice questions** directly about ${subject}
+  - Create one review page with a concise summary, key formulas or rules, and one guided problem with numbered steps
+  - Put answers in the guided-practice set for immediate review; keep final-practice answers separate
 - Each answer must be the correct, final response with NO extra explanation
 - All answers must be factually accurate and match their questions precisely
 
@@ -190,7 +309,7 @@ ${JSON.stringify(QUIZ_OUTPUT_SCHEMA, null, 2)}
 }
 
 async function verifyQuizAnswerSet(subject, quizData, apiKey, attemptNumber = 1) {
-  if (!quizData || !Array.isArray(quizData.questions) || quizData.questions.length !== 5) {
+  if (!quizData || !Array.isArray(quizData.questions) || quizData.questions.length !== 6 || !Array.isArray(quizData.finalQuestions) || quizData.finalQuestions.length !== 5) {
     return quizData || { subject, questions: [] };
   }
 
@@ -227,6 +346,11 @@ If all questions are valid:
 \`\`\`json
 ${JSON.stringify(quizData, null, 2)}
 \`\`\`
+
+## Deterministic pre-check (performed without AI)
+${JSON.stringify(deterministicLessonCheck(quizData))}
+
+If the deterministic pre-check is invalid, you MUST correct the affected question before returning.
 
 ## Response Format (ONLY valid JSON)
 \`\`\`json
@@ -274,15 +398,19 @@ ${JSON.stringify(VERIFICATION_SCHEMA, null, 2)}
     if (isValidVerificationResult(verificationResult)) {
       return {
         subject: verificationResult.subject || quizData.subject,
-        questions: verificationResult.correctedQuestions
+        questions: verificationResult.correctedQuestions,
+        finalQuestions: verificationResult.correctedFinalQuestions,
+        review: quizData.review
       };
     }
 
-    if (verificationResult && Array.isArray(verificationResult.correctedQuestions) && verificationResult.correctedQuestions.length === 5) {
+    if (verificationResult && Array.isArray(verificationResult.correctedQuestions) && verificationResult.correctedQuestions.length === 6 && Array.isArray(verificationResult.correctedFinalQuestions) && verificationResult.correctedFinalQuestions.length === 5) {
       console.log(`Corrections found in verification attempt ${attemptNumber}. Retrying verification...`);
       const correctedQuiz = {
         subject: verificationResult.subject || quizData.subject,
-        questions: verificationResult.correctedQuestions
+        questions: verificationResult.correctedQuestions,
+        finalQuestions: verificationResult.correctedFinalQuestions,
+        review: quizData.review
       };
       // Retry verification with corrected quiz
       return verifyQuizAnswerSet(subject, correctedQuiz, apiKey, attemptNumber + 1);
@@ -312,7 +440,12 @@ async function AskOpenAi(userInput, apiKeyOverride) {
   }
 
   if (isMoreThan4Words(userInput)) {
-    const catPrompt = `Please output the category that this is about. If the subject is unsafe or something you cannot design a quiz around, output: ${CATEGORY_ERROR_CODE}\n\n###\n\n${userInput}`;
+    const catPrompt = `
+      Please output the category that this is about.
+      The category should not alter the original user input substantially.
+      Focus on the specific subject the user wants. Example: "Give me hundreds of questions about the Pythagorean Theorem" Subject: "Pythagorean Theorem"
+      If the subject is unsafe or something you cannot design a quiz around, output: ${CATEGORY_ERROR_CODE}\n\n###\n\n${userInput}
+    `;
 
     try {
       const category_summary_response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -367,7 +500,7 @@ async function AskOpenAi(userInput, apiKeyOverride) {
         model: "gpt-4o-mini",
         messages: [{ role: "user", content: finalPrompt }],
         temperature: 0.2,
-        max_tokens: 500,
+        max_tokens: 2200,
         response_format: {
           type: "json_schema",
           json_schema: {
@@ -390,9 +523,9 @@ async function AskOpenAi(userInput, apiKeyOverride) {
     const out = data?.choices?.[0]?.message?.content || "";
     const parsed = extractJsonObject(out);
 
-    if (parsed && Array.isArray(parsed.questions) && parsed.questions.length === 5 && parsed.subject) {
+    if (parsed && Array.isArray(parsed.questions) && parsed.questions.length === 6 && Array.isArray(parsed.finalQuestions) && parsed.finalQuestions.length === 5 && parsed.review && parsed.subject) {
       const verifiedQuiz = await verifyQuizAnswerSet(category_data, parsed, requestApiKey);
-      if (verifiedQuiz && Array.isArray(verifiedQuiz.questions) && verifiedQuiz.questions.length === 5 && verifiedQuiz.subject) {
+      if (verifiedQuiz && Array.isArray(verifiedQuiz.questions) && verifiedQuiz.questions.length === 6 && Array.isArray(verifiedQuiz.finalQuestions) && verifiedQuiz.finalQuestions.length === 5 && verifiedQuiz.subject) {
         return verifiedQuiz;
       }
       return parsed;
