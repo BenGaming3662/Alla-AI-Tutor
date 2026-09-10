@@ -440,12 +440,7 @@ async function AskOpenAi(userInput, apiKeyOverride) {
   }
 
   if (isMoreThan4Words(userInput)) {
-    const catPrompt = `
-      Please output the category that this is about.
-      The category should not alter the original user input substantially.
-      Focus on the specific subject the user wants. Example: "Give me hundreds of questions about the Pythagorean Theorem" Subject: "Pythagorean Theorem"
-      If the subject is unsafe or something you cannot design a quiz around, output: ${CATEGORY_ERROR_CODE}\n\n###\n\n${userInput}
-    `;
+    const catPrompt = `Please output the category that this is about. If the subject is unsafe or something you cannot design a quiz around, output: ${CATEGORY_ERROR_CODE}\n\n###\n\n${userInput}`;
 
     try {
       const category_summary_response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -466,6 +461,13 @@ async function AskOpenAi(userInput, apiKeyOverride) {
       const cleaned = normalizeCategoryText(raw);
       const normalizedRaw = normalizeForComparison(raw);
       const normalizedErrorCode = normalizeForComparison(CATEGORY_ERROR_CODE);
+
+      // Debug prints for all variables
+      console.log("category_response_data:", category_response_data);
+      console.log("raw:", raw);
+      console.log("cleaned:", cleaned);
+      console.log("normalizedRaw:", normalizedRaw);
+      console.log("normalizedErrorCode:", normalizedErrorCode);
 
       if (
         normalizedRaw.includes(normalizedErrorCode) ||
