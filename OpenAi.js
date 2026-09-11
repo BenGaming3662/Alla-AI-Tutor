@@ -403,9 +403,7 @@ ${JSON.stringify(VERIFICATION_SCHEMA, null, 2)}
         review: quizData.review
       };
     }
-
-    if (verificationResult && Array.isArray(verificationResult.correctedQuestions) && verificationResult.correctedQuestions.length === 6 && Array.isArray(verificationResult.correctedFinalQuestions) && verificationResult.correctedFinalQuestions.length === 5) {
-      console.log(`Corrections found in verification attempt ${attemptNumber}. Retrying verification...`);
+    else {
       const correctedQuiz = {
         subject: verificationResult.subject || quizData.subject,
         questions: verificationResult.correctedQuestions,
