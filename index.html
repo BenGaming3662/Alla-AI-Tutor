@@ -276,11 +276,12 @@
 
     <script src="secrets.js"></script>
     <script src="OpenAi.js"></script>
-    <script>
+    <script> // Above is boring html work
         var form = document.getElementById("searchForm");
         var input = document.getElementById("userInput");
         var output = document.getElementById("output");
 
+        // Normalize answers before comparison so harmless casing and punctuation differences do not fail grading.
         function normalizeAnswer(value) {
             return String(value || "")
                 .toLowerCase()
@@ -288,7 +289,7 @@
                 .replace(/\s+/g, " ")
                 .trim();
         }
-        function isAnswerCorrect(userAnswer, expectedAnswer) {
+        function isAnswerCorrect(userAnswer, expectedAnswer) { // This checks if your quiz answers were right
             const user = normalizeAnswer(userAnswer);
             const expected = normalizeAnswer(expectedAnswer);
             
@@ -331,26 +332,38 @@
             return false;
         }
 
-        function renderQuiz(quizData) {
+        // Model content is untrusted; escape it before composing the lesson HTML.
+        function escapeHtml(value) {
+            return String(value || "")
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#39;");
+        }
+
+        function renderQuiz(quizData) { // This renders the quiz data into the output element. No actual production here that is important.
             if (!quizData || !quizData.review || !Array.isArray(quizData.questions) || !Array.isArray(quizData.finalQuestions)) {
                 output.innerHTML = "<p>No quiz data available.</p>";
                 return;
             }
-
-            var subjectTitle = quizData.subject || "Study Topic";
+            // Lot of varibles.
+            var subjectTitle = escapeHtml(quizData.subject || "Study Topic");
             var review = quizData.review;
-            var formulas = (review.formulas || []).map(function (formula) { return "<li>" + formula + "</li>"; }).join("");
-            var guidedSteps = (review.guidedProblem.steps || []).map(function (step) { return "<li>" + step + "</li>"; }).join("");
+            var formulas = (review.formulas || []).map(function (formula) { return "<li>" + escapeHtml(formula) + "</li>"; }).join("");
+            var guidedSteps = (review.guidedProblem.steps || []).map(function (step) { return "<li>" + escapeHtml(step) + "</li>"; }).join("");
+            // Guided questions reveal answers immediately; final questions are graded interactively below.
             var guidedItems = quizData.questions.map(function (item) {
-                return "<div class=\"practice-card\"><strong>" + item.question + "</strong><small class=\"practice-answer\">Answer: " + item.answer + "</small></div>";
+                return "<div class=\"practice-card\"><strong>" + escapeHtml(item.question) + "</strong><small class=\"practice-answer\">Answer: " + escapeHtml(item.answer) + "</small></div>";
             });
             var guidedSplit = Math.ceil(guidedItems.length / 2);
             var finalItems = quizData.finalQuestions.map(function (item, index) {
-                 return "<div class=\"quiz-question\"><label for=\"final-answer-" + index + "\">" + (index + 1) + ". " + item.question + "</label><input id=\"final-answer-" + index + "\" class=\"answer-input\" type=\"text\" data-index=\"" + index + "\" placeholder=\"Type your answer\"><small class=\"final-feedback\" id=\"final-feedback-" + index + "\"></small></div>";
+                 return "<div class=\"quiz-question\"><label for=\"final-answer-" + index + "\">" + (index + 1) + ". " + escapeHtml(item.question) + "</label><input id=\"final-answer-" + index + "\" class=\"answer-input\" type=\"text\" data-index=\"" + index + "\" placeholder=\"Type your answer\"><small class=\"final-feedback\" id=\"final-feedback-" + index + "\"></small></div>";
             }).join("");
 
-            output.innerHTML = "<div class=\"lesson-shell\"><div class=\"quiz-header\"><h3>" + subjectTitle + "</h3></div><div class=\"lesson-nav\"><button class=\"active\" data-page=\"review-page\">1. Review</button><button data-page=\"guided-page\">2. Guided Practice</button><button data-page=\"guided-page-2\">3. More Practice</button><button data-page=\"final-page\">4. Check Answers</button></div><section id=\"review-page\" class=\"lesson-page active\"><h3>Review</h3><p>" + review.summary + "</p><ul class=\"formula-list\">" + formulas + "</ul><div class=\"guided-card\"><strong>Guided problem: " + review.guidedProblem.prompt + "</strong><ol class=\"step-list\">" + guidedSteps + "</ol><small class=\"practice-answer\">Answer: " + review.guidedProblem.answer + "</small></div></section><section id=\"guided-page\" class=\"lesson-page\"><h3>Guided practice</h3>" + guidedItems.slice(0, guidedSplit).join("") + "</section><section id=\"guided-page-2\" class=\"lesson-page\"><h3>More practice</h3>" + guidedItems.slice(guidedSplit).join("") + "</section><section id=\"final-page\" class=\"lesson-page\"><h3>Final practice</h3><button type=\"button\" class=\"check-answers-button\" id=\"gradeQuizButton\">Check Answers</button>" + finalItems + "</section></div>";
+            output.innerHTML = "<div class=\"lesson-shell\"><div class=\"quiz-header\"><h3>" + subjectTitle + "</h3></div><div class=\"lesson-nav\"><button class=\"active\" data-page=\"review-page\">1. Review</button><button data-page=\"guided-page\">2. Guided Practice</button><button data-page=\"guided-page-2\">3. More Practice</button><button data-page=\"final-page\">4. Final Practice</button></div><section id=\"review-page\" class=\"lesson-page active\"><h3>Review</h3><p>" + escapeHtml(review.summary) + "</p><ul class=\"formula-list\">" + formulas + "</ul><div class=\"guided-card\"><strong>Guided problem: " + escapeHtml(review.guidedProblem.prompt) + "</strong><ol class=\"step-list\">" + guidedSteps + "</ol><small class=\"practice-answer\">Answer: " + escapeHtml(review.guidedProblem.answer) + "</small></div></section><section id=\"guided-page\" class=\"lesson-page\"><h3>Guided Practice</h3>" + guidedItems.slice(0, guidedSplit).join("") + "</section><section id=\"guided-page-2\" class=\"lesson-page\"><h3>More Practice</h3>" + guidedItems.slice(guidedSplit).join("") + "</section><section id=\"final-page\" class=\"lesson-page\"><h3>Final Practice</h3><button type=\"button\" class=\"check-answers-button\" id=\"gradeQuizButton\">Check Answers</button>" + finalItems + "</section></div>";
 
+            // Keep only one lesson stage visible at a time.
             output.querySelectorAll(".lesson-nav button").forEach(function (button) {
                 button.addEventListener("click", function () {
                     output.querySelectorAll(".lesson-nav button, .lesson-page").forEach(function (element) { element.classList.remove("active"); });
@@ -359,6 +372,7 @@
                 });
             });
 
+            // Grade each final answer locally so the student gets immediate feedback.
             document.getElementById("gradeQuizButton").addEventListener("click", function () {
                 output.querySelectorAll(".answer-input").forEach(function (field) {
                     var questionIndex = Number(field.dataset.index);
@@ -373,6 +387,7 @@
             });
         }
 
+        // Submit one prompt at a time and render only a non-empty quiz response.
         form.addEventListener("submit", async function (event) {
             event.preventDefault();
 

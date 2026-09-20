@@ -2,6 +2,13 @@ const CATEGORY_ERROR_CODE = "Id10T error";
 
 const globalScope = typeof window !== "undefined" ? window : globalThis;
 
+// Keep the quiz-size contract in one place. Schemas, runtime checks, prompts, and tests use these values.
+const QUIZ_COUNTS = Object.freeze({
+  practice: 6,
+  final: 5
+});
+
+// Constrains the quiz-generation response before it can reach verification or the UI.
 const QUIZ_OUTPUT_SCHEMA = {
   type: "object",
   properties: {
@@ -27,8 +34,8 @@ const QUIZ_OUTPUT_SCHEMA = {
     },
     questions: {
       type: "array",
-      minItems: 6,
-      maxItems: 6,
+      minItems: QUIZ_COUNTS.practice,
+      maxItems: QUIZ_COUNTS.practice,
       items: {
         type: "object",
         properties: {
@@ -41,8 +48,8 @@ const QUIZ_OUTPUT_SCHEMA = {
     },
     finalQuestions: {
       type: "array",
-      minItems: 5,
-      maxItems: 5,
+      minItems: QUIZ_COUNTS.final,
+      maxItems: QUIZ_COUNTS.final,
       items: {
         type: "object",
         properties: {
@@ -58,16 +65,16 @@ const QUIZ_OUTPUT_SCHEMA = {
   additionalProperties: false
 };
 
-// The model fact-checks educational content; deterministic checks independently
-// reject malformed data and simple arithmetic errors.
+
+// Requires the verifier to report the original and corrected sets with accuracy metadata.
 const VERIFICATION_SCHEMA = {
   type: "object",
   properties: {
     subject: { type: "string" },
     questions: {
       type: "array",
-      minItems: 6,
-      maxItems: 6,
+      minItems: QUIZ_COUNTS.practice,
+      maxItems: QUIZ_COUNTS.practice,
       items: {
         type: "object",
         properties: {
@@ -83,8 +90,8 @@ const VERIFICATION_SCHEMA = {
     },
     finalQuestions: {
       type: "array",
-      minItems: 5,
-      maxItems: 5,
+      minItems: QUIZ_COUNTS.final,
+      maxItems: QUIZ_COUNTS.final,
       items: {
         type: "object",
         properties: {
@@ -98,97 +105,152 @@ const VERIFICATION_SCHEMA = {
         additionalProperties: false
       }
     },
-    allQuestionsValid: { type: "boolean" },
     correctedQuestions: {
       type: "array",
-      minItems: 6,
-      maxItems: 6,
+      minItems: QUIZ_COUNTS.practice,
+      maxItems: QUIZ_COUNTS.practice,
       items: {
         type: "object",
         properties: {
           question: { type: "string" },
-          answer: { type: "string" }
+          answer: { type: "string" },
+          isAccurate: { type: "boolean" },
+          isOnTopic: { type: "boolean" },
+          reasonIfInaccurate: { type: "string" }
         },
-        required: ["question", "answer"],
+        required: ["question", "answer", "isAccurate", "isOnTopic", "reasonIfInaccurate"],
         additionalProperties: false
       }
     },
     correctedFinalQuestions: {
       type: "array",
-      minItems: 5,
-      maxItems: 5,
+      minItems: QUIZ_COUNTS.final,
+      maxItems: QUIZ_COUNTS.final,
       items: {
         type: "object",
         properties: {
           question: { type: "string" },
-          answer: { type: "string" }
+          answer: { type: "string" },
+          isAccurate: { type: "boolean" },
+          isOnTopic: { type: "boolean" },
+          reasonIfInaccurate: { type: "string" }
         },
-        required: ["question", "answer"],
+        required: ["question", "answer", "isAccurate", "isOnTopic", "reasonIfInaccurate"],
         additionalProperties: false
       }
     }
   },
-  required: ["subject", "questions", "finalQuestions", "allQuestionsValid", "correctedQuestions", "correctedFinalQuestions"],
+  required: ["subject", "questions", "finalQuestions", "correctedQuestions", "correctedFinalQuestions"],
   additionalProperties: false
 };
 
-function isValidVerificationResult(result) {
-  return Boolean(
-    result &&
-    typeof result.subject === "string" &&
-    Array.isArray(result.questions) &&
-     result.questions.length === 6 &&
-    result.questions.every((question) =>
+// A verified set must have the expected size and every item must be accurate and on-topic.
+function hasVerifiedQuestionSet(questionSet, expectedCount) {
+  return Array.isArray(questionSet) &&
+    questionSet.length === expectedCount &&
+    questionSet.every((question) =>
       question &&
       typeof question.question === "string" &&
       typeof question.answer === "string" &&
       question.isAccurate === true &&
       question.isOnTopic === true
-    ) &&
-     Array.isArray(result.finalQuestions) &&
-     result.finalQuestions.length === 5 &&
-     result.finalQuestions.every((question) =>
-       question &&
-       typeof question.question === "string" &&
-       typeof question.answer === "string" &&
-       question.isAccurate === true &&
-       question.isOnTopic === true
-     ) &&
-    result.allQuestionsValid === true &&
-    Array.isArray(result.correctedQuestions) &&
-     result.correctedQuestions.length === 6 &&
-    result.correctedQuestions.every((question) =>
-      question &&
-      typeof question.question === "string" &&
-      typeof question.answer === "string"
-    ) &&
-    Array.isArray(result.correctedFinalQuestions) &&
-    result.correctedFinalQuestions.length === 5 &&
-    result.correctedFinalQuestions.every((question) =>
-      question &&
-      typeof question.question === "string" &&
-      typeof question.answer === "string"
-    )
+    );
+}
+
+// Accept only verification results that fully validate both original and corrected sets.
+function isValidVerificationResult(result) {
+  return Boolean(
+    result &&
+    typeof result.subject === "string" &&
+    hasVerifiedQuestionSet(result.questions, QUIZ_COUNTS.practice) &&
+    hasVerifiedQuestionSet(result.finalQuestions, QUIZ_COUNTS.final) &&
+    hasVerifiedQuestionSet(result.correctedQuestions, QUIZ_COUNTS.practice) &&
+    hasVerifiedQuestionSet(result.correctedFinalQuestions, QUIZ_COUNTS.final)
   );
+}
+
+// Keep verifier-only flags out of the object consumed by the lesson UI.
+function removeVerificationMetadata(questionSet) {
+  return questionSet.map(({ question, answer }) => ({ question, answer }));
+}
+
+function showVerificationAlert(message) {
+  if (typeof window !== "undefined" && typeof window.alert === "function") {
+    window.alert(message);
+  }
 }
 
 let leoProfanity = null;
 let leoProfanityLoaded = false;
 
+// Leo Profanity does not recognize every term in the product's safety policy.
+// These fallback terms keep blocking deterministic when the package is unavailable or incomplete.
+const CUSTOM_PROFANITY_WORDS = new Set([
+  "fuck",
+  "damn",
+  "hell",
+  "crap",
+  "idiot",
+  "stupid",
+  "dumb",
+  "freak",
+  "freaking",
+  "butt",
+  "jerk",
+  "trash",
+  "screw",
+  "screwed",
+  "idiocy",
+  "moron",
+  "loser",
+  "hate"
+]);
+
 try {
   if (typeof require === "function") {
     leoProfanity = require("leo-profanity");
-    leoProfanity.loadDictionary();
-    leoProfanityLoaded = true;
+    if (typeof leoProfanity?.loadDictionary === "function") {
+      leoProfanity.loadDictionary();
+    }
+    leoProfanityLoaded = Boolean(leoProfanity);
   }
 } catch (err) {
   console.warn("Profanity filter unavailable:", err);
+  leoProfanityLoaded = false;
 }
 
-function isMoreThan4Words(text) {
-  if (!text) return false;
-  const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
-  return wordCount >= 4;
+function isProfanityBlocked(text) {
+  if (!text) {
+    return false;
+  }
+
+  const candidate = String(text).toLowerCase();
+  const words = candidate.match(/[a-z']+/g) || [];
+
+  // Check the local fallback first so the guard works in both browser and Node environments.
+  if (words.some((word) => CUSTOM_PROFANITY_WORDS.has(word.replace(/['’]/g, "")))) {
+    return true;
+  }
+
+  // Use Leo as a broader secondary dictionary when it is available.
+  if (!leoProfanity || !leoProfanityLoaded) {
+    return false;
+  }
+
+  try {
+    if (typeof leoProfanity.check === "function" && leoProfanity.check(candidate)) {
+      return true;
+    }
+
+    if (typeof leoProfanity.badWordsUsed === "function") {
+      const badWords = leoProfanity.badWordsUsed(candidate) || [];
+      return badWords.length > 0;
+    }
+  } catch (err) {
+    console.warn("Profanity validation failed:", err);
+  }
+
+  return false;
 }
 
 function normalizeCategoryText(text) {
@@ -216,6 +278,86 @@ function inferCategoryFromPrompt(text) {
     .trim();
 }
 
+const ACADEMIC_SUBJECT_TERMS = [
+  "algebra", "calculus", "geometry", "trigonometry", "statistics", "probability", "arithmetic", "mathematics", "math",
+  "physics", "chemistry", "biology", "astronomy", "geology", "science", "computer science", "programming", "coding",
+  "history", "geography", "economics", "psychology", "sociology", "political science", "government", "civics", "law",
+  "philosophy", "ethics", "anthropology", "linguistics", "literature", "writing", "grammar", "reading", "language",
+  "english", "spanish", "french", "german", "art history", "music theory", "engineering", "medicine", "anatomy"
+];
+
+function isAcademicSubject(subjectText) {
+  const normalized = normalizeForComparison(subjectText || "");
+  return ACADEMIC_SUBJECT_TERMS.some((term) => normalized === term || normalized.includes(` ${term} `) || normalized.startsWith(`${term} `) || normalized.endsWith(` ${term}`));
+}
+
+function isGenericSubject(subjectText) {
+  const normalized = normalizeForComparison(subjectText || "");
+  if (!normalized) return true;
+
+  const genericValues = [
+    "this is a test prompt",
+    "test prompt",
+    "this is a test",
+    "sample prompt",
+    "random prompt",
+    "prompt",
+    "test",
+    "question",
+    "help",
+    "general knowledge",
+    "topic",
+    "subject"
+  ];
+
+  if (genericValues.includes(normalized)) {
+    return true;
+  }
+
+  const words = normalized.split(/\s+/).filter(Boolean);
+  const genericWords = new Set(["this", "is", "a", "an", "test", "prompt", "question", "help", "topic", "subject", "general", "knowledge", "sample", "random", "thing", "stuff"]);
+
+  if (words.length === 1) {
+    return words[0].length <= 2 || genericWords.has(words[0]);
+  }
+
+  return words.every((word) => genericWords.has(word) || word.length <= 2);
+}
+
+function isGenericPrompt(inputText) {
+  const normalized = normalizeForComparison(inputText || "");
+  if (!normalized) return true;
+
+  const genericPatterns = [
+    "this is a test prompt",
+    "this is a test",
+    "test prompt",
+    "sample prompt",
+    "random prompt",
+    "prompt",
+    "test",
+    "question",
+    "help me",
+    "help",
+    "general knowledge",
+    "topic",
+    "subject"
+  ];
+
+  if (genericPatterns.includes(normalized)) {
+    return true;
+  }
+
+  const words = normalized.split(/\s+/).filter(Boolean);
+  const genericWords = new Set(["this", "is", "a", "an", "test", "prompt", "question", "help", "me", "topic", "subject", "general", "knowledge", "sample", "random", "thing", "stuff"]);
+
+  if (words.length <= 3) {
+    return words.every((word) => genericWords.has(word) || word.length <= 2);
+  }
+
+  return false;
+}
+
 function extractJsonObject(rawText) {
   if (!rawText) return null;
 
@@ -226,6 +368,7 @@ function extractJsonObject(rawText) {
 
   const firstBrace = text.indexOf("{");
   const lastBrace = text.lastIndexOf("}");
+  // Models may wrap valid JSON in Markdown fences or surrounding prose.
   if (firstBrace !== -1 && lastBrace > firstBrace) {
     text = text.slice(firstBrace, lastBrace + 1);
   }
@@ -280,7 +423,7 @@ You are creating an educational quiz on the subject: **${subject}**
 
 ## Core Requirements
 
-  - Generate exactly **6 guided-practice questions** and exactly **5 final-practice questions** directly about ${subject}
+  - Generate exactly **${QUIZ_COUNTS.practice} guided-practice questions** and exactly **${QUIZ_COUNTS.final} final-practice questions** directly about ${subject}
   - Create one review page with a concise summary, key formulas or rules, and one guided problem with numbered steps
   - Put answers in the guided-practice set for immediate review; keep final-practice answers separate
 - Each answer must be the correct, final response with NO extra explanation
@@ -309,11 +452,10 @@ ${JSON.stringify(QUIZ_OUTPUT_SCHEMA, null, 2)}
 }
 
 async function verifyQuizAnswerSet(subject, quizData, apiKey, attemptNumber = 1) {
-  if (!quizData || !Array.isArray(quizData.questions) || quizData.questions.length !== 6 || !Array.isArray(quizData.finalQuestions) || quizData.finalQuestions.length !== 5) {
+  if (!quizData || !Array.isArray(quizData.questions) || quizData.questions.length !== QUIZ_COUNTS.practice || !Array.isArray(quizData.finalQuestions) || quizData.finalQuestions.length !== QUIZ_COUNTS.final) {
     return quizData || { subject, questions: [] };
   }
 
-  // Max 3 verification attempts
   const MAX_VERIFICATION_ATTEMPTS = 3;
   if (attemptNumber > MAX_VERIFICATION_ATTEMPTS) {
     console.warn(`Verification exceeded max attempts (${MAX_VERIFICATION_ATTEMPTS}). Returning quiz as-is.`);
@@ -395,28 +537,36 @@ ${JSON.stringify(VERIFICATION_SCHEMA, null, 2)}
       return quizData;
     }
 
+    // Only corrected content from a fully valid verification response is returned to the UI.
     if (isValidVerificationResult(verificationResult)) {
       return {
         subject: verificationResult.subject || quizData.subject,
-        questions: verificationResult.correctedQuestions,
-        finalQuestions: verificationResult.correctedFinalQuestions,
+        questions: removeVerificationMetadata(verificationResult.correctedQuestions),
+        finalQuestions: removeVerificationMetadata(verificationResult.correctedFinalQuestions),
         review: quizData.review
       };
-    }
-    else {
-      const correctedQuiz = {
-        subject: verificationResult.subject || quizData.subject,
-        questions: verificationResult.correctedQuestions,
-        finalQuestions: verificationResult.correctedFinalQuestions,
-        review: quizData.review
-      };
-      // Retry verification with corrected quiz
-      return verifyQuizAnswerSet(subject, correctedQuiz, apiKey, attemptNumber + 1);
     }
 
-    return quizData;
+    const correctedQuestions = Array.isArray(verificationResult.correctedQuestions) ? removeVerificationMetadata(verificationResult.correctedQuestions) : quizData.questions;
+    const correctedFinalQuestions = Array.isArray(verificationResult.correctedFinalQuestions) ? removeVerificationMetadata(verificationResult.correctedFinalQuestions) : quizData.finalQuestions;
+
+    if (!Array.isArray(correctedQuestions) || correctedQuestions.length !== QUIZ_COUNTS.practice || !Array.isArray(correctedFinalQuestions) || correctedFinalQuestions.length !== QUIZ_COUNTS.final) {
+      console.warn("Verification result missing corrected question sets; keeping original quiz.");
+      showVerificationAlert("The quiz verification failed because the question count did not match the expected format. Please contact support or try again.");
+      return quizData;
+    }
+
+    const correctedQuiz = {
+      subject: verificationResult.subject || quizData.subject,
+      questions: correctedQuestions,
+      finalQuestions: correctedFinalQuestions,
+      review: quizData.review
+    };
+
+    return verifyQuizAnswerSet(subject, correctedQuiz, apiKey, attemptNumber + 1);
   } catch (err) {
     console.warn(`Quiz verification error (attempt ${attemptNumber}):`, err);
+    showVerificationAlert("The quiz verification could not complete. The question count may be different or a support issue may be needed.");
     return quizData;
   }
 }
@@ -426,19 +576,18 @@ async function AskOpenAi(userInput, apiKeyOverride) {
     return { subject: "", questions: [] };
   }
 
-  const requestApiKey = apiKeyOverride || globalScope?.APP_CONFIG?.OPENAI_API_KEY || process?.env?.OPENAI_API_KEY;
-  let category_data = userInput.trim();
-
-  function AllaAntiSwear(text) {
-    if (!leoProfanity || !leoProfanityLoaded) {
-      return false;
-    }
-
-    return leoProfanity.check(text);
+  const trimmedInput = userInput.trim();
+  // Reject unsafe or non-substantive input before spending an API call.
+  if (isProfanityBlocked(trimmedInput) || isGenericPrompt(trimmedInput)) {
+    return { subject: "Error", questions: [] };
   }
 
-  if (isMoreThan4Words(userInput)) {
-    const catPrompt = `Please output the category that this is about. If the subject is unsafe or something you cannot design a quiz around, output: ${CATEGORY_ERROR_CODE}\n\n###\n\n${userInput}`;
+  const requestApiKey = apiKeyOverride || globalScope?.APP_CONFIG?.OPENAI_API_KEY || process?.env?.OPENAI_API_KEY;
+  let category_data = trimmedInput;
+
+  {
+    // Classify every substantive prompt so short math skills are supported without a hardcoded topic list.
+    const catPrompt = `Identify the broad academic subject for this request. Map every mathematics request, including specific skills or methods, to Math. Return only the subject. If the subject is unsafe, non-academic, or something you cannot design a quiz around, output: ${CATEGORY_ERROR_CODE}\n\n###\n\n${userInput}`;
 
     try {
       const category_summary_response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -460,31 +609,35 @@ async function AskOpenAi(userInput, apiKeyOverride) {
       const normalizedRaw = normalizeForComparison(raw);
       const normalizedErrorCode = normalizeForComparison(CATEGORY_ERROR_CODE);
 
-      // Debug prints for all variables
-      console.log("category_response_data:", category_response_data);
-      console.log("raw:", raw);
-      console.log("cleaned:", cleaned);
-      console.log("normalizedRaw:", normalizedRaw);
-      console.log("normalizedErrorCode:", normalizedErrorCode);
-
       if (
         normalizedRaw.includes(normalizedErrorCode) ||
         normalizeForComparison(cleaned).includes(normalizedErrorCode) ||
-        AllaAntiSwear(category_data)
+        isProfanityBlocked(category_data)
       ) {
         return { subject: "Error", questions: [] };
       }
 
       const inferredCategory = inferCategoryFromPrompt(cleaned || userInput);
-      if (inferredCategory) {
-        category_data = inferredCategory;
-      } else if (cleaned) {
-        category_data = cleaned;
+      const candidateCategory = inferredCategory || cleaned || userInput.trim();
+
+      if (isGenericSubject(candidateCategory)) {
+        return { subject: "Error", questions: [] };
+      }
+
+      category_data = candidateCategory;
+
+      if (isProfanityBlocked(category_data)) {
+        return { subject: "Error", questions: [] };
       }
     } catch (err) {
       console.warn("Category extraction failed:", err);
       category_data = userInput.trim();
     }
+  }
+
+  // Fail closed: only recognized academic subjects may reach quiz generation.
+  if (!isAcademicSubject(category_data)) {
+    return { subject: "Error", questions: [] };
   }
 
   const finalPrompt = buildQuizPrompt(category_data);
@@ -523,9 +676,9 @@ async function AskOpenAi(userInput, apiKeyOverride) {
     const out = data?.choices?.[0]?.message?.content || "";
     const parsed = extractJsonObject(out);
 
-    if (parsed && Array.isArray(parsed.questions) && parsed.questions.length === 6 && Array.isArray(parsed.finalQuestions) && parsed.finalQuestions.length === 5 && parsed.review && parsed.subject) {
+    if (parsed && Array.isArray(parsed.questions) && parsed.questions.length === QUIZ_COUNTS.practice && Array.isArray(parsed.finalQuestions) && parsed.finalQuestions.length === QUIZ_COUNTS.final && parsed.review && parsed.subject) {
       const verifiedQuiz = await verifyQuizAnswerSet(category_data, parsed, requestApiKey);
-      if (verifiedQuiz && Array.isArray(verifiedQuiz.questions) && verifiedQuiz.questions.length === 6 && Array.isArray(verifiedQuiz.finalQuestions) && verifiedQuiz.finalQuestions.length === 5 && verifiedQuiz.subject) {
+      if (verifiedQuiz && Array.isArray(verifiedQuiz.questions) && verifiedQuiz.questions.length === QUIZ_COUNTS.practice && Array.isArray(verifiedQuiz.finalQuestions) && verifiedQuiz.finalQuestions.length === QUIZ_COUNTS.final && verifiedQuiz.subject) {
         return verifiedQuiz;
       }
       return parsed;
@@ -545,7 +698,7 @@ async function AskOpenAi(userInput, apiKeyOverride) {
 }
 
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { AskOpenAi, QUIZ_OUTPUT_SCHEMA, VERIFICATION_SCHEMA };
+  module.exports = { AskOpenAi, isValidVerificationResult, QUIZ_COUNTS, QUIZ_OUTPUT_SCHEMA, VERIFICATION_SCHEMA };
 }
 
 globalScope.AskOpenAi = AskOpenAi;
