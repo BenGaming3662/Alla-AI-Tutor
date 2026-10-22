@@ -4,13 +4,13 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Alla AI: About</title>
+    <title>Alla AI — Tutoring | About</title>
     <style>
         :root {
             color-scheme: dark;
             --brand-green: #00ff0d;
             --bg: #07090b;
-            --panel: rgb(25, 25, 25);
+            --panel: rgb(0, 0, 0);
             --panel-border: rgb(0, 155, 13);
             --text: #fff8f5;
             --muted: #99a18a;
@@ -37,14 +37,13 @@
         }
 
         .topbar {
-            position: fixed;
+            position: absolute;
             top: 18px;
             right: 18px;
-            left: auto;
+            left: 18px;
             display: flex;
             align-items: center;
-            gap: 16px;
-            justify-content: flex-end;
+            justify-content: space-between;
         }
 
         .topbar img {
@@ -78,9 +77,14 @@
             padding: 10px 16px;
             border-radius: 8px;
             background: rgb(25, 100, 25);
-            border: 1px solid rgba(255, 255, 255, 0.16);
+            border: 1px solid rgba(255, 255, 255);
             color: var(--text);
             text-decoration: none;
+        }
+
+        .nav-buttons .nav-link[aria-current="page"] {
+            border-color: var(--brand-green);
+            color: var(--brand-green);
         }
 
         .nav-buttons .nav-link:hover {
@@ -111,7 +115,7 @@
         }
 
         @media (max-width: 560px) {
-            .topbar { right: 12px; }
+            .topbar { top: 14px; right: 12px; left: 12px; }
             .topbar img { width: 92px; }
             .page-body { padding: 20px; margin-top: 3vh; }
             .title { font-size: 2.1rem; }
@@ -124,19 +128,25 @@
         <img src="https://i.imgur.com/HvQ6wZ6.png" alt="Logo">
         <div class="nav-buttons">
             <a class="nav-link" href="index.html">Home</a>
-            <a class="nav-link" href="About.html">About</a>
+            <a class="nav-link" href="About.html" aria-current="page">About</a>
         </div>
     </div>
 
     <div class="page-body">
         <div class="header-text">
-            <div class="title">Alla AI: About</div>
+            <h1 class="title">Alla AI — Tutoring</h1>
         </div>
 
+        <h2>What Alla AI is for</h2>
+        <p>Math is the main focus: start with the foundations, then build understanding through a worked example and
+            guided practice. That means refreshing single-digit multiplication before harder products or area. Alla AI
+            can also help with other academic subjects.</p>
+        <p>Use it to learn and practice, not to copy answers or do graded work for you. Try each problem, check your
+            understanding, and ask for another explanation whenever a step is unclear.</p>
+
         <h2>Mission Statement</h2>
-        <p>Alla AI was made for one simple goal: to actually help real people. We believe that if you make learning easy
-            and accessible, then people will be able to learn. Alla AI is made to stop people cheating on tests by
-            giving them an easy alternative in the form of a tutor giving practice problems.</p>
+        <p>Alla AI was made to make learning more approachable and accessible. We want students to have a useful
+            alternative to copying answers: an interactive tutor that explains ideas and gives them a chance to practice.</p>
 
         <h2>About the Primary Creator</h2>
         <p>Benjamin Concannon (Allamein) is a young creator/developer who lives in Massachusetts. Since June 26th, 2024,
