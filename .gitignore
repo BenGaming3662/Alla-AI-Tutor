@@ -1,4 +1,6 @@
 .env
+.env.*
+!.env.example
 secrets.js
 .vscode
 node_modules

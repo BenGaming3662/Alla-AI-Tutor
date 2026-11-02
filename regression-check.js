@@ -370,7 +370,7 @@ global.fetch = async (_url, options) => {
     const appPage = await requestHttp('GET', '/', '');
     assert.strictEqual(appPage.status, 200);
     assert(appPage.body.includes('<title>Alla AI — Math-first study tutor</title>'));
-    assert(appPage.body.includes('<h1 class="title">Alla AI — Math-first study tutor</h1>'));
+    assert(appPage.body.includes('<h1 class="title">Alla AI — Tutoring</h1>'));
     assert(appPage.body.includes('Math comes first, and other academic subjects are welcome too.'));
     assert(!appPage.body.includes('secrets.js'), 'The page must not load browser-side secrets');
 
