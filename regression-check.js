@@ -15,6 +15,10 @@ function assert(condition, message) {
     subject: 'Algebra',
     review: {
       summary: 'Algebra basics',
+      prerequisites: [
+        { concept: 'Addition', explanation: 'Adding puts two numbers together.', example: '2 + 3 = 5' }
+      ],
+      howItWorks: ['Start with the first number', 'Add the second number to it'],
       formulas: ['x + y'],
       guidedProblem: {
         prompt: 'Solve 2+2',
@@ -72,6 +76,16 @@ function assert(condition, message) {
   };
 
   let alertCalls = 0;
+
+  // Hooks that let a test see (and change) what the fake AI is asked and what it answers.
+  let lessonCalls = 0;           // how many lesson requests were made
+  let lastLessonPrompt = '';     // the text of the latest lesson request
+  let lastVerifyPrompt = '';     // the text of the latest verification request
+  let lessonReplyForCall = null; // optional: (callNumber) => the lesson the fake AI sends back
+  let verifyCalls = 0;           // how many answer-checker requests were made
+  let verifyPrompts = [];        // the text of every answer-checker request, in order
+  let verifyReplyForCall = null; // optional: (callNumber) => the checker reply the fake AI sends back
+
   // This harness isolates routing and validation behavior from the live API.
   const ctx = {
     window: { APP_CONFIG: { OPENAI_API_KEY: 'test-key' } },
@@ -97,16 +111,27 @@ function assert(condition, message) {
         if (lowerContent.includes('biology')) {
           return { ok: true, json: async () => ({ choices: [{ message: { content: 'Category: Biology' } }] }) };
         }
+        // Like the real AI, a specific math skill is mapped to the broad subject "Math".
+        if (lowerContent.includes('multiplication')) {
+          return { ok: true, json: async () => ({ choices: [{ message: { content: 'Category: Math' } }] }) };
+        }
         return { ok: true, json: async () => ({ choices: [{ message: { content: 'Category: Algebra' } }] }) };
       }
 
       if (content.includes('Quiz Generation Task')) {
-        const quiz = content.toLowerCase().includes('**biology**') ? { ...validQuiz, subject: 'Biology' } : validQuiz;
+        lessonCalls += 1;
+        lastLessonPrompt = content;
+        const defaultQuiz = content.toLowerCase().includes('**biology**') ? { ...validQuiz, subject: 'Biology' } : validQuiz;
+        const quiz = lessonReplyForCall ? lessonReplyForCall(lessonCalls) : defaultQuiz;
         return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify(quiz) } }] }) };
       }
 
       if (content.includes('Quiz Verification & Quality Assurance')) {
-        const verification = content.toLowerCase().includes('**biology**') ? { ...validVerification, subject: 'Biology' } : validVerification;
+        verifyCalls += 1;
+        verifyPrompts.push(content);
+        lastVerifyPrompt = content;
+        const defaultVerification = content.toLowerCase().includes('**biology**') ? { ...validVerification, subject: 'Biology' } : validVerification;
+        const verification = verifyReplyForCall ? verifyReplyForCall(verifyCalls) : defaultVerification;
         return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify(verification) } }] }) };
       }
 
@@ -177,6 +202,122 @@ function assert(condition, message) {
   const biology = await ctx.window.AskOpenAi('How do I study biology today');
   assert(biology.subject === 'Biology', 'Academic Biology input should remain allowed');
   assert(Array.isArray(biology.questions) && biology.questions.length === expectedCounts.practice, 'Biology should produce the expected practice count');
+
+  // ---- Topic must not be lost (bug: "single digit multiplication" became just "Math") ----
+  // The category step maps this input to the broad subject "Math".
+  // The quiz writer must STILL hear the real topic, or the lesson drifts to random math.
+  lessonCalls = 0;
+  const multiplication = await ctx.window.AskOpenAi('single digit multiplication');
+  assert(multiplication.subject !== 'Error', 'Single digit multiplication should be accepted');
+  assert(lastLessonPrompt.includes('**single digit multiplication**'), 'The quiz writer must be told the real topic, not just "Math"');
+  assert(lastLessonPrompt.includes('**Math**'), 'The broad subject should still be sent as context');
+  // The answer checker is deliberately NOT given the topic wording. In live tests it misread "single digit"
+  // as "the answer must be one digit" and marked good questions (5 × 5 = 25) as wrong.
+  assert(!lastVerifyPrompt.toLowerCase().includes('single digit'), 'The answer checker must not get the topic wording (it misreads size words)');
+  assert(!lastVerifyPrompt.includes('Algebra basics'), 'The answer checker should get only the questions, not the review');
+  assert(lessonCalls === 1, `A complete lesson should need only 1 lesson request, got ${lessonCalls}`);
+
+  // ---- Review must teach the prerequisites (for example repeated addition for multiplication) ----
+  assert(lastLessonPrompt.includes('prerequisites') && lastLessonPrompt.includes('repeated addition'), 'The prompt must ask for prerequisites and point to repeated addition');
+  assert(apiModule.hasCompleteReview(multiplication.review), 'The review that reaches the page must include prerequisites and how-it-works steps');
+
+  // Each broken copy below is missing one required part of the review, so each must fail.
+  const goodReview = validQuiz.review;
+  assert(apiModule.hasCompleteReview(goodReview) === true, 'A full review should pass');
+  assert(apiModule.hasCompleteReview({ summary: 'Old format', formulas: [], guidedProblem: goodReview.guidedProblem }) === false, 'The old review format (no prerequisites) should fail');
+  assert(apiModule.hasCompleteReview({ ...goodReview, prerequisites: [] }) === false, 'An empty prerequisites list should fail');
+  assert(apiModule.hasCompleteReview({ ...goodReview, prerequisites: [{ concept: 'Addition', explanation: '', example: '2 + 3 = 5' }] }) === false, 'A prerequisite with no explanation should fail');
+  assert(apiModule.hasCompleteReview({ ...goodReview, prerequisites: [{ concept: 'Addition', explanation: 'Adds numbers.', example: '' }] }) === false, 'A prerequisite with no example should fail');
+  assert(apiModule.hasCompleteReview({ ...goodReview, howItWorks: [] }) === false, 'Missing how-it-works steps should fail');
+  assert(apiModule.hasCompleteReview({ ...goodReview, guidedProblem: undefined }) === false, 'A missing guided problem should fail');
+
+  // If the AI forgets the prerequisites, the app asks again once instead of showing a thin review.
+  const reviewWithoutPrerequisites = { ...validQuiz, review: { ...validQuiz.review, prerequisites: [] } };
+  lessonCalls = 0;
+  lessonReplyForCall = (callNumber) => (callNumber === 1 ? reviewWithoutPrerequisites : validQuiz);
+  const retried = await ctx.window.AskOpenAi('algebra retry check');
+  assert(lessonCalls === 2, `An incomplete review should trigger exactly 1 retry, got ${lessonCalls} lesson requests`);
+  assert(apiModule.hasCompleteReview(retried.review), 'The retried lesson should have a complete review');
+
+  // If it is incomplete every time, the app returns no quiz (instead of a review with missing parts).
+  lessonCalls = 0;
+  lessonReplyForCall = () => reviewWithoutPrerequisites;
+  const stillIncomplete = await ctx.window.AskOpenAi('algebra retry check');
+  assert(lessonCalls === 2, `The app should give up after 2 lesson requests, got ${lessonCalls}`);
+  assert(Array.isArray(stillIncomplete.questions) && stillIncomplete.questions.length === 0, 'A lesson with an incomplete review must not reach the page');
+  lessonReplyForCall = null;
+
+  // A very long, messy topic is cleaned (no quotes or new lines) and cut short before it goes into the prompt.
+  await ctx.window.AskOpenAi('algebra "quoted"\nword ' + 'x'.repeat(300));
+  const sentTopic = (lastLessonPrompt.match(/Topic the student asked for: \*\*(.*)\*\*/) || [])[1] || '';
+  assert(sentTopic.length > 0 && sentTopic.length <= 150, `The topic should be cut to 150 characters or less, got ${sentTopic.length}`);
+  assert(!sentTopic.includes('"') && !sentTopic.includes('\n'), 'The topic should have no quotes or new lines');
+  console.log('Lesson topic and review checks: PASS');
+
+  // ---- The answer checker (the second AI pass) must help, not hurt ----
+  // Make alert() visible to the app, so we can prove no pop-up appears.
+  ctx.window.alert = () => {
+    alertCalls += 1;
+  };
+
+  // Plain-math pre-check: right answers pass (even fractions), wrong answers fail, and anything it cannot judge is skipped.
+  const precheck = (question, answer) => apiModule.deterministicQuestionCheck([{ question, answer }]).valid;
+  assert(precheck('What is 1/2 + 1/4?', '3/4') === true, 'A right fraction answer must not be flagged (the old check read "3/4" as 3)');
+  assert(precheck('What is 1/2 + 1/4?', '2/3') === false, 'A wrong fraction answer must be flagged');
+  assert(precheck('What is 7 × 8?', '56') === true, 'A right × answer should pass');
+  assert(precheck('What is 7 × 8?', '54') === false, 'A wrong × answer should be flagged');
+  assert(precheck('What is 1/2 ÷ 1/4?', '2') === true, 'Fraction division is too tricky for the simple check, so it must be skipped');
+  assert(precheck('Write 3 + 3 + 3 as multiplication.', '3 × 3') === true, 'Questions with extra words must be skipped, not flagged');
+  assert(precheck('In which war (1914-1918) did trench fighting happen?', 'World War I') === true, 'Dates in history questions must not be read as math');
+  assert(apiModule.deterministicQuestionCheck([{ question: 'What is 7 × 8?', answer: '54' }]).reason.includes('The correct value is 56'), 'The pre-check should tell the AI the correct value');
+
+  // If the checker complains but changes nothing, the app must not keep asking (each ask costs about 20 seconds).
+  const flaggedOnly = {
+    ...validVerification,
+    questions: validVerification.questions.map((item, index) => (index === 0 ? { ...item, isAccurate: false, reasonIfInaccurate: 'Not sure' } : item))
+  };
+  verifyCalls = 0;
+  verifyReplyForCall = () => flaggedOnly;
+  const stoppedEarly = await ctx.window.AskOpenAi('algebra checker check');
+  assert(verifyCalls === 1, `A checker that changes nothing should be asked only once, got ${verifyCalls}`);
+  assert(stoppedEarly.questions.length === expectedCounts.practice, 'The quiz must still be returned when the checker changes nothing');
+
+  // If the checker "fixes" a right answer into a wrong one (2+2 = 5), the app keeps the right answer.
+  const wrongFix = {
+    ...validVerification,
+    correctedQuestions: validVerification.correctedQuestions.map((item, index) => (index === 0 ? { ...item, answer: '5' } : item))
+  };
+  verifyCalls = 0;
+  verifyReplyForCall = () => wrongFix;
+  const keptRightAnswer = await ctx.window.AskOpenAi('algebra checker check');
+  assert(keptRightAnswer.questions[0].answer === '4', `The right answer 2+2 = 4 must be kept, got ${keptRightAnswer.questions[0].answer}`);
+
+  // Same, when the checker also flags the item (so the "not fully valid" path is used).
+  verifyCalls = 0;
+  verifyReplyForCall = () => ({ ...wrongFix, questions: flaggedOnly.questions });
+  const keptRightAnswer2 = await ctx.window.AskOpenAi('algebra checker check');
+  assert(keptRightAnswer2.questions[0].answer === '4', 'A flagged item with a wrong fix must still keep the right answer');
+  assert(verifyCalls === 1, `After the wrong fix is thrown away nothing changed, so the checker should be asked once, got ${verifyCalls}`);
+
+  // A real fix is kept, and the fixed quiz is checked once more.
+  const lessonWithError = { ...validQuiz, questions: validQuiz.questions.map((item, index) => (index === 5 ? { question: '7+7', answer: '15' } : item)) };
+  const fixingReply = {
+    ...validVerification,
+    questions: validVerification.questions.map((item, index) => (index === 5 ? { ...item, answer: '15', isAccurate: false, reasonIfInaccurate: '7+7 is 14' } : item))
+  };
+  lessonReplyForCall = () => lessonWithError;
+  verifyCalls = 0;
+  verifyPrompts = [];
+  verifyReplyForCall = (callNumber) => (callNumber === 1 ? fixingReply : validVerification);
+  const fixedQuiz = await ctx.window.AskOpenAi('algebra checker check');
+  assert(fixedQuiz.questions[5].answer === '14', `The real fix (7+7 = 14) must be kept, got ${fixedQuiz.questions[5].answer}`);
+  assert(verifyCalls === 2, `A real fix should be checked once more (2 checker requests), got ${verifyCalls}`);
+  assert(verifyPrompts[0].includes('The correct value is 14'), 'The checker should be told the right value for a wrong answer');
+  lessonReplyForCall = null;
+  verifyReplyForCall = null;
+
+  assert(alertCalls === 0, `No pop-up alert should appear in these checker flows, got ${alertCalls}`);
+  console.log('Answer checker checks: PASS');
 
   const promptValidation = require('./zod').validatePromptInput({ prompt: 'hi' });
   assert(!promptValidation.success, 'Short prompts must be rejected');

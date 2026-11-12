@@ -147,6 +147,10 @@
         .lesson-page h3 { margin: 0; color: var(--brand-green); }
         .lesson-page p { margin: 0; line-height: 1.6; }
         .formula-list, .step-list { margin: 0; padding-left: 22px; line-height: 1.7; }
+        .lesson-page h4 { margin: 0 0 8px; color: #ffffff; font-size: 1rem; }
+        .prereq-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+        .prereq-list li { display: grid; gap: 4px; padding: 12px 14px; border: 1px solid rgba(255,255,255,0.14); border-radius: 12px; background: rgba(12,16,21,0.8); }
+        .prereq-example { color: var(--muted); }
         .guided-card, .practice-card { padding: 16px; border: 1px solid rgba(255,255,255,0.14); border-radius: 14px; background: rgba(12,16,21,0.8); }
         .practice-card { display: grid; gap: 7px; }
         .practice-answer { color: var(--muted); font-size: 0.82rem; }
@@ -352,6 +356,18 @@
             var review = quizData.review;
             var formulas = (review.formulas || []).map(function (formula) { return "<li>" + escapeHtml(formula) + "</li>"; }).join("");
             var guidedSteps = (review.guidedProblem.steps || []).map(function (step) { return "<li>" + escapeHtml(step) + "</li>"; }).join("");
+            // Prerequisites: each one shows its name, a short lesson, and a tiny worked example.
+            var prerequisites = (review.prerequisites || []).map(function (item) {
+                var example = String(item.example || "").replace(/^example:\s*/i, ""); // avoids "Example: Example: ..."
+                return "<li><strong>" + escapeHtml(item.concept) + "</strong><p>" + escapeHtml(item.explanation) + "</p><p class=\"prereq-example\">Example: " + escapeHtml(example) + "</p></li>";
+            }).join("");
+            // How it works: ordered steps that build from the prerequisites up to the new topic.
+            var howItWorks = (review.howItWorks || []).map(function (step) { return "<li>" + escapeHtml(step) + "</li>"; }).join("");
+            // Review order: summary, what to know first, how it works, key rules. Empty parts are skipped.
+            var reviewIntro = "<p>" + escapeHtml(review.summary) + "</p>" +
+                (prerequisites ? "<div><h4>What you need to know first</h4><ul class=\"prereq-list\">" + prerequisites + "</ul></div>" : "") +
+                (howItWorks ? "<div><h4>How it works</h4><ol class=\"step-list\">" + howItWorks + "</ol></div>" : "") +
+                (formulas ? "<div><h4>Key rules</h4><ul class=\"formula-list\">" + formulas + "</ul></div>" : "");
             // Guided questions reveal answers immediately; final questions are graded interactively below.
             var guidedItems = quizData.questions.map(function (item) {
                 return "<div class=\"practice-card\"><strong>" + escapeHtml(item.question) + "</strong><small class=\"practice-answer\">Answer: " + escapeHtml(item.answer) + "</small></div>";
@@ -361,7 +377,7 @@
                  return "<div class=\"quiz-question\"><label for=\"final-answer-" + index + "\">" + (index + 1) + ". " + escapeHtml(item.question) + "</label><input id=\"final-answer-" + index + "\" class=\"answer-input\" type=\"text\" data-index=\"" + index + "\" placeholder=\"Type your answer\"><small class=\"final-feedback\" id=\"final-feedback-" + index + "\"></small></div>";
             }).join("");
 
-            output.innerHTML = "<div class=\"lesson-shell\"><div class=\"quiz-header\"><h3>" + subjectTitle + "</h3></div><div class=\"lesson-nav\"><button class=\"active\" data-page=\"review-page\">1. Review</button><button data-page=\"guided-page\">2. Guided Practice</button><button data-page=\"guided-page-2\">3. More Practice</button><button data-page=\"final-page\">4. Final Practice</button></div><section id=\"review-page\" class=\"lesson-page active\"><h3>Review</h3><p>" + escapeHtml(review.summary) + "</p><ul class=\"formula-list\">" + formulas + "</ul><div class=\"guided-card\"><strong>Guided problem: " + escapeHtml(review.guidedProblem.prompt) + "</strong><ol class=\"step-list\">" + guidedSteps + "</ol><small class=\"practice-answer\">Answer: " + escapeHtml(review.guidedProblem.answer) + "</small></div></section><section id=\"guided-page\" class=\"lesson-page\"><h3>Guided Practice</h3>" + guidedItems.slice(0, guidedSplit).join("") + "</section><section id=\"guided-page-2\" class=\"lesson-page\"><h3>More Practice</h3>" + guidedItems.slice(guidedSplit).join("") + "</section><section id=\"final-page\" class=\"lesson-page\"><h3>Final Practice</h3><button type=\"button\" class=\"check-answers-button\" id=\"gradeQuizButton\">Check Answers</button>" + finalItems + "</section></div>";
+            output.innerHTML = "<div class=\"lesson-shell\"><div class=\"quiz-header\"><h3>" + subjectTitle + "</h3></div><div class=\"lesson-nav\"><button class=\"active\" data-page=\"review-page\">1. Review</button><button data-page=\"guided-page\">2. Guided Practice</button><button data-page=\"guided-page-2\">3. More Practice</button><button data-page=\"final-page\">4. Final Practice</button></div><section id=\"review-page\" class=\"lesson-page active\"><h3>Review</h3>" + reviewIntro + "<div class=\"guided-card\"><strong>Guided problem: " + escapeHtml(review.guidedProblem.prompt) + "</strong><ol class=\"step-list\">" + guidedSteps + "</ol><small class=\"practice-answer\">Answer: " + escapeHtml(review.guidedProblem.answer) + "</small></div></section><section id=\"guided-page\" class=\"lesson-page\"><h3>Guided Practice</h3>" + guidedItems.slice(0, guidedSplit).join("") + "</section><section id=\"guided-page-2\" class=\"lesson-page\"><h3>More Practice</h3>" + guidedItems.slice(guidedSplit).join("") + "</section><section id=\"final-page\" class=\"lesson-page\"><h3>Final Practice</h3><button type=\"button\" class=\"check-answers-button\" id=\"gradeQuizButton\">Check Answers</button>" + finalItems + "</section></div>";
 
             // Keep only one lesson stage visible at a time.
             output.querySelectorAll(".lesson-nav button").forEach(function (button) {
