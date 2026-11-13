@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alla AI — Tutoring | About</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            --brand-green: #00ff0d;
+            --bg: #07090b;
+            --panel: rgb(0, 0, 0);
+            --panel-border: rgb(0, 155, 13);
+            --text: #fff8f5;
+            --muted: #99a18a;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            min-height: 100vh;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: "Segoe UI", Roboto, Arial, sans-serif;
+            position: relative;
+            padding: 90px 18px 32px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .topbar {
+            position: absolute;
+            top: 18px;
+            right: 18px;
+            left: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .topbar img {
+            width: 140px;
+            max-width: 160px;
+            object-fit: contain;
+            display: block;
+        }
+
+        .header-text {
+            display: flex;
+            justify-content: center;
+            padding-top: 10px;
+        }
+
+        .title {
+            color: #ffffff;
+            font-family: "Segoe UI", Arial, sans-serif;
+            font-size: 300%;
+            text-align: center;
+            margin: 0 0 8px 0;
+        }
+
+        .nav-buttons {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .nav-buttons .nav-link {
+            padding: 10px 16px;
+            border-radius: 8px;
+            background: rgb(25, 100, 25);
+            border: 1px solid rgba(255, 255, 255);
+            color: var(--text);
+            text-decoration: none;
+        }
+
+        .nav-buttons .nav-link[aria-current="page"] {
+            border-color: var(--brand-green);
+            color: var(--brand-green);
+        }
+
+        .nav-buttons .nav-link:hover {
+            background: rgba(0, 155, 13);
+            transform: translateY(-1px);
+        }
+
+        .page-body {
+            width: min(800px, 100%);
+            display: grid;
+            gap: 18px;
+            margin-top: 5vh;
+            padding: 28px;
+            border: 1px solid var(--panel-border);
+            border-radius: 20px;
+            background: var(--panel);
+        }
+
+        h2 {
+            margin: 0 0 8px 0;
+            color: var(--text);
+        }
+
+        p {
+            color: var(--muted);
+            line-height: 1.6;
+            margin: 0 0 12px 0;
+        }
+
+        @media (max-width: 560px) {
+            .topbar { top: 14px; right: 12px; left: 12px; }
+            .topbar img { width: 92px; }
+            .page-body { padding: 20px; margin-top: 3vh; }
+            .title { font-size: 2.1rem; }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="topbar">
+        <img src="https://i.imgur.com/HvQ6wZ6.png" alt="Logo">
+        <div class="nav-buttons">
+            <a class="nav-link" href="index.html">Home</a>
+            <a class="nav-link" href="About.html" aria-current="page">About</a>
+        </div>
+    </div>
+
+    <div class="page-body">
+        <div class="header-text">
+            <h1 class="title">Alla AI — Tutoring</h1>
+        </div>
+
+        <h2>What Alla AI is for</h2>
+        <p>Math is the main focus: start with the foundations, then build understanding through a worked example and
+            guided practice. That means refreshing single-digit multiplication before harder products or area. Alla AI
+            can also help with other academic subjects.</p>
+        <p>Use it to learn and practice, not to copy answers or do graded work for you. Try each problem, check your
+            understanding, and ask for another explanation whenever a step is unclear.</p>
+
+        <h2>Mission Statement</h2>
+        <p>Alla AI was made to make learning more approachable and accessible. We want students to have a useful
+            alternative to copying answers: an interactive tutor that explains ideas and gives them a chance to practice.</p>
+
+        <h2>About the Primary Creator</h2>
+        <p>Benjamin Concannon (Allamein) is a young creator/developer who lives in Massachusetts. Since June 26th, 2024,
+            he has been making small projects. Alla AI was made from personal experience; Benjamin saw people not using
+            AI for studying, and he wanted to change it.</p>
+
+    </div>
+
+</body>
+
+</html>
