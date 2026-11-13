@@ -1,45 +1,104 @@
-# Quiz Generator Improvements
+# Quiz Generator Improvements Summary
 
-## Request Routing
+## 1. VERIFICATION_SCHEMA Added (OpenAi.js)
 
-- Requests of four words or fewer are classified during lesson generation. Longer requests use a separate AI classification call. The model returns the `Id10T error` sentinel for non-academic requests; no local academic-subject allowlist is used.
+Created a comprehensive verification schema that checks:
+- **isAccurate**: Validates factual correctness of answers
+- **isOnTopic**: Ensures questions stay strictly on subject
+- **allQuestionsValid**: Boolean flag for overall quiz validity
+- **correctedQuestions**: Returns corrected versions if issues found
 
-## Local App and API Key
+This schema enables the verification system to provide detailed feedback on question quality.
 
-- Put `OPENAI_API_KEY=your-key` in the ignored local `.env` file, run `npm start`, and open `http://localhost:3000`; opening `index.html` directly is intentionally unsupported. A process environment variable takes precedence over `.env`.
-- The browser does not load `secrets.js`, send an API key, or call OpenAI directly.
-- The local server binds to loopback by default, serves only the app's explicit static files, accepts bounded JSON requests, and rejects non-local origins/hosts.
+## 2. Enhanced System Prompts (OpenAi.js)
 
-## Generation and Verification
+Replaced basic text prompts with markdown-structured prompts:
 
-- Guided Practice and More Practice each contain exactly three questions; Final Practice contains exactly five. The same counts are prompted, validated, verified, Zod-checked, and rendered.
-- `VERIFICATION_SCHEMA` checks both original question sets and their corrected sets, with accuracy and topic flags on every item. The validator confirms that original entries correspond to the generated questions and that corrected arrays preserve their respective lengths.
-- Verification retries generation up to three times. Repeated failures report whether generation counts/data or verification checks failed and advise the user to try again or contact support.
-- Two-digit addition is checked locally: each problem must use two two-digit addends and its answer must equal their sum.
+### Quiz Generation Prompt
+- Clear heading hierarchy using markdown (#, ##)
+- Explicit "Core Requirements" section
+- **Answer Format Guidelines** addressing the FOIL problem:
+  - Guides consistency in acronym handling
+  - Prevents "FOIL" vs "First Outer Inner Last" mismatches
+- Quality checklist format for clarity
 
-## Answer Matching
+### Verification Prompt
+- 4-part validation framework (Accuracy, Topic, Quality, Consistency)
+- Clear correction instructions
+- Structured JSON response format
 
-- Grading normalizes case and punctuation, compares equivalent numeric strings, recognizes exact acronym/expansion pairs such as `FOIL` and `First, Outer, Inner, Last`, and accepts numeric answers when a student omits the expected unit (for example, `75` for `75 cm²`). Conflicting explicit units remain incorrect.
-- Partial substring and loose word-overlap matches are rejected to avoid accepting incorrect answers.
+**Key improvement**: Lower temperature (0.1) for verification ensures more consistent, accurate responses.
 
-## Review Foundations
+## 3. Retry Logic with Attempt Tracking (OpenAi.js)
 
-- The Review stage includes a required prerequisite refresher, with concrete examples, before formulas and the worked problem. Math generation explicitly includes foundational multiplication facts where appropriate, including single-digit multiplication before larger products or area problems.
-- Lesson titles and the About page describe Alla AI as a math-first tutor that can also support other academic subjects.
+`verifyQuizAnswerSet()` now:
+- Tracks verification attempts (max 3 attempts)
+- Auto-retries if corrections are found
+- Logs each attempt for debugging
+- Gracefully returns quiz if max attempts exceeded
+- Prevents infinite loops while allowing self-correction
 
-## Model Choice
+```javascript
+// Max 3 verification attempts
+if (attemptNumber > 3) {
+  return quizData; // Return best effort
+}
+```
 
-- Lesson generation, verification, and longer-prompt classification use `gpt-4o-mini`, which supports structured outputs and is currently priced at $0.15 per million input tokens and $0.60 per million output tokens on standard pricing.
-- `gpt-4.1-nano` is cheaper ($0.10 input / $0.40 output per million tokens) and supports structured outputs, but the project retains `gpt-4o-mini` as the quality/cost balance for multi-step lesson generation and verification.
+## 4. Smart Answer Comparison Logic (index.html)
 
-## Netlify Deployment
+New `isAnswerCorrect()` function handles:
 
-- `npm run build` stages only `index.html`, `About.html`, and the browser `OpenAi.js` into `dist`; local secrets, server files, and tests are excluded.
-- `netlify.toml` publishes `dist`, deploys the `netlify/functions/openai.js` API, and rewrites `/openai` to the function. Configure `OPENAI_API_KEY` in the Netlify site's environment variables before deploying; do not add it to the repository or publish directory.
-- To publish without localhost: in Netlify, choose **Add new site → Import an existing project**, connect `BenGaming3662/Alla-AI-Tutor`, and use the repository root. Netlify reads the build command (`npm run build`), publish directory (`dist`), and Functions directory from `netlify.toml`.
-- In the Netlify site, add `OPENAI_API_KEY` under **Site configuration → Environment variables**, ensuring the variable is available to Functions, then trigger a new deploy. Visit the generated `https://<site-name>.netlify.app` URL; the browser's same-origin `/openai` request is rewritten to the function.
-- This workspace has no authenticated Netlify CLI or deploy token, so it can prepare and verify the deployment but cannot publish the live site. Local development remains available with `npm start`.
+### Exact Match
+```
+"FOIL" === "foil" ✓
+```
 
-## Validation
+### Partial Match (3+ character minimum)
+```
+"FOIL" in "foil method" ✓
+"method" in "foil method" ✓
+```
 
-Run `npm test` to check category routing, dynamic question counts, verification integrity, two-digit addition, answer matching and unit tolerance, prerequisite review validation, a Zod-validated calculus limits question and answer, local and Netlify API validation, HTTP security behavior, upstream failures, and bounded retries. `npm run build` creates the Netlify publish directory.
+### Acronym Detection
+```
+User: "FOIL" | Expected: "first outer inner last"
+→ Creates "foil" from first letters → Match ✓
+```
+
+### Lenient Matching (80% word overlap)
+```
+User: "first outer inner last" | Expected: "foil method"
+→ Only "foil" expected but not in user answer → No match
+(But acronym check would catch this)
+```
+
+This addresses the original FOIL problem: now both "FOIL" and "First Outer Inner Last" will be accepted.
+
+## Files Modified
+
+1. **OpenAi.js**
+   - Added VERIFICATION_SCHEMA
+   - Improved `buildQuizPrompt()` with markdown structure
+   - Enhanced `verifyQuizAnswerSet()` with retry logic and attempt tracking
+
+2. **index.html**
+   - Added `isAnswerCorrect()` function with multi-strategy comparison
+   - Updated grading logic to use advanced comparison
+   - Removed normalization from expected answer (kept raw value for better matching)
+
+## How It Works End-to-End
+
+1. User submits topic → `AskOpenAi()` generates quiz with improved prompts
+2. Quiz is generated with consistent answer formatting
+3. Quiz is verified with `VERIFICATION_SCHEMA` (max 3 attempts)
+4. Corrected versions are automatically retried if issues found
+5. User grades quiz, answers matched using `isAnswerCorrect()`
+6. Accepts exact matches, acronyms, partial matches, and word overlap
+
+## Testing Recommendations
+
+- Test FOIL: "FOIL" and "First Outer Inner Last" should both pass
+- Test acronyms: "PEMDAS", "BODMAS" variations
+- Test partial answers: "method" when expecting "foil method"
+- Test word order variations

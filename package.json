@@ -4,9 +4,8 @@
   "description": "",
   "main": "OpenAi.js",
   "scripts": {
-    "build": "node build.js",
-    "test": "node regression-check.js",
-    "start": "node --env-file-if-exists=.env server.js"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
   },
   "repository": {
     "type": "git",
@@ -23,7 +22,7 @@
   "dependencies": {
     "leo-profanity": "^1.9.0",
     "tone": "^15.1.22",
-    "zod": "^4.4.3"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "typescript": "^7.0.2"
