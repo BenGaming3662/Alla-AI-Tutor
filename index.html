@@ -279,7 +279,7 @@
     </div>
 
     <!-- <script src="secrets.js"></script> -->
-    <script src="OpenAi.js"></script>
+    <!-- <script src="OpenAi.js"></script> -->
     <script> // Above is boring html work
         var form = document.getElementById("searchForm");
         var input = document.getElementById("userInput");
@@ -417,7 +417,13 @@
             output.textContent = "Thinking...";
 
             try {
-                var result = await AskOpenAi(userInput);
+                // Ask our Netlify Function (it holds the secret key) to make the OpenAI call
+                var response = await fetch("/.netlify/functions/openai", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ prompt: userInput })
+                });
+                var result = await response.json();
 
                 if (result && Array.isArray(result.questions) && result.questions.length > 0) {
                     renderQuiz(result);
