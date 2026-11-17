@@ -305,6 +305,7 @@ function inferCategoryFromPrompt(text) {
 
 const ACADEMIC_SUBJECT_TERMS = [
   "algebra", "calculus", "geometry", "trigonometry", "statistics", "probability", "arithmetic", "mathematics", "math",
+  "exponent", "exponents", "multiplication", "division", "fractions", "decimals", "percent", "percentage", "equations",
   "physics", "chemistry", "biology", "astronomy", "geology", "science", "computer science", "programming", "coding",
   "history", "geography", "economics", "psychology", "sociology", "political science", "government", "civics", "law",
   "philosophy", "ethics", "anthropology", "linguistics", "literature", "writing", "grammar", "reading", "language",
@@ -823,7 +824,16 @@ async function AskOpenAi(userInput, apiKeyOverride) {
     return { subject: "Error", questions: [] };
   }
 
-  const requestApiKey = apiKeyOverride || globalScope?.APP_CONFIG?.OPENAI_API_KEY || process?.env?.OPENAI_API_KEY;
+  // Prefer an explicit key from the Netlify function; fall back to env only in Node.
+  const requestApiKey =
+    apiKeyOverride ||
+    globalScope?.APP_CONFIG?.OPENAI_API_KEY ||
+    (typeof process !== "undefined" && process.env && process.env.OPENAI_API_KEY);
+
+  if (!requestApiKey) {
+    return { subject: "Error", questions: [], error: "OPENAI_API_KEY is missing" };
+  }
+
   let category_data = trimmedInput;
 
   {
@@ -845,6 +855,16 @@ async function AskOpenAi(userInput, apiKeyOverride) {
       });
 
       const category_response_data = await category_summary_response.json().catch(() => null);
+
+      // Surface real OpenAI failures (bad key, billing, rate limit) instead of silently failing later.
+      if (!category_summary_response.ok) {
+        return {
+          subject: "Error",
+          questions: [],
+          error: category_response_data?.error?.message || "OpenAI category request failed"
+        };
+      }
+
       const raw = category_response_data?.choices?.[0]?.message?.content || "";
       const cleaned = normalizeCategoryText(raw);
       const normalizedRaw = normalizeForComparison(raw);

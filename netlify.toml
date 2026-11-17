@@ -1,2 +1,7 @@
 [functions]
   directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+# The "-background" filename makes this a long-running Background Function (up to 15 minutes).
+[functions."openai-background"]
+  background = true

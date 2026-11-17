@@ -403,7 +403,40 @@
             });
         }
 
-        // Submit one prompt at a time and render only a non-empty quiz response.
+        // Wait a few seconds between status checks so we do not spam the server.
+        function wait(ms) {
+            return new Promise(function (resolve) {
+                setTimeout(resolve, ms);
+            });
+        }
+
+        // Ask the status function until the background job finishes or we time out.
+        async function pollQuizJob(jobId) {
+            var maxAttempts = 60; // 60 tries * 3 seconds = about 3 minutes
+            for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+                var statusResponse = await fetch("/.netlify/functions/openai-status?jobId=" + encodeURIComponent(jobId));
+                var statusData = await statusResponse.json().catch(function () { return null; });
+
+                if (!statusData) {
+                    throw new Error("Could not read quiz status.");
+                }
+
+                if (statusData.status === "done") {
+                    return statusData;
+                }
+
+                if (statusData.status === "error") {
+                    throw new Error(statusData.error || "Quiz job failed.");
+                }
+
+                output.textContent = "Building your quiz… (" + attempt + "/" + maxAttempts + ")";
+                await wait(3000);
+            }
+
+            throw new Error("Timed out waiting for the quiz. Please try again.");
+        }
+
+        // Start a background job, poll for the result, then render the quiz.
         form.addEventListener("submit", async function (event) {
             event.preventDefault();
 
@@ -414,23 +447,36 @@
                 return;
             }
 
-            output.textContent = "Thinking...";
+            output.textContent = "Starting quiz job…";
 
             try {
-                // Ask our Netlify Function (it holds the secret key) to make the OpenAI call
-                var response = await fetch("/.netlify/functions/openai", {
+                // 1) Start the job (returns immediately with a jobId)
+                var startResponse = await fetch("/.netlify/functions/openai-start", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ prompt: userInput })
                 });
-                var result = await response.json();
+                var startData = await startResponse.json().catch(function () { return null; });
 
+                if (!startResponse.ok || !startData || !startData.jobId) {
+                    var startError = (startData && (startData.error || startData.errorMessage)) || "Could not start quiz job.";
+                    output.textContent = "Error: " + startError;
+                    return;
+                }
+
+                // 2) Poll until the background worker saves the quiz
+                output.textContent = "Building your quiz…";
+                var jobResult = await pollQuizJob(startData.jobId);
+                var result = jobResult && jobResult.quiz;
+
+                // 3) Show the quiz, or a clear error if the payload is empty
                 if (result && Array.isArray(result.questions) && result.questions.length > 0) {
                     renderQuiz(result);
                     return;
                 }
 
-                output.textContent = result && result.error ? "OpenAI error: " + result.error : "No quiz data was returned.";
+                var resultError = (result && result.error) || (jobResult && jobResult.error);
+                output.textContent = resultError ? "OpenAI error: " + resultError : "No quiz data was returned.";
             } catch (error) {
                 output.textContent = "Error: " + (error.message || "Request failed");
             }

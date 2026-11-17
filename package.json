@@ -20,6 +20,7 @@
   },
   "homepage": "https://github.com/BenGaming3662/Alla-AI-Tutor#readme",
   "dependencies": {
+    "@netlify/blobs": "^11.1.9",
     "leo-profanity": "^1.9.0",
     "tone": "^15.1.22",
     "zod": "^4.6.7"
