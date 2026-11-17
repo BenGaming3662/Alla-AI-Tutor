@@ -12,7 +12,7 @@ exports.handler = async (event) => {
   }
 
   try {
-    const store = getQuizStore();
+    const store = getQuizStore(event);
     // Read the saved job as JSON from Netlify Blobs.
     const job = await store.get(jobId, { type: "json" });
 

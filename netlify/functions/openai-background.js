@@ -23,7 +23,7 @@ exports.handler = async (event) => {
     return { statusCode: 400, body: "jobId and prompt are required" };
   }
 
-  const store = getQuizStore();
+  const store = getQuizStore(event);
 
   try {
     if (!process.env.OPENAI_API_KEY) {

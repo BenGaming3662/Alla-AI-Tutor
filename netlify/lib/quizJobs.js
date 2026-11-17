@@ -1,11 +1,15 @@
 // Shared helpers for quiz jobs stored in Netlify Blobs.
 // The browser never talks to OpenAI; it only starts a job and polls for status.
-const { getStore } = require("@netlify/blobs");
+const { connectLambda, getStore } = require("@netlify/blobs");
 
 const STORE_NAME = "quiz-jobs";
 
 // One blob store for all in-progress and finished quiz jobs.
-function getQuizStore() {
+// Lambda-style handlers need connectLambda(event) so Netlify injects Blobs credentials.
+function getQuizStore(event) {
+  if (event) {
+    connectLambda(event);
+  }
   return getStore(STORE_NAME);
 }
 

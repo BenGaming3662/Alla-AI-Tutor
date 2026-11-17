@@ -25,7 +25,7 @@ exports.handler = async (event) => {
   }
 
   const jobId = crypto.randomUUID();
-  const store = getQuizStore();
+  const store = getQuizStore(event);
 
   // Mark the job as pending before the background worker starts.
   await store.setJSON(jobId, {
